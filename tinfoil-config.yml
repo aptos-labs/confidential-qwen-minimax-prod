@@ -1,0 +1,106 @@
+cvm-version: 0.11.0
+shim:
+  upstream-container: mux
+  upstream-port: 8080
+  paths:
+  - /health
+  - /v1/models
+  - /v1/chat/completions
+  - /v1/completions
+  - /v1/videos
+  - /v1/videos/*
+  dummy-attestation: false
+  publish-attestation: false
+  authenticated: true
+  authenticated-endpoints:
+  - /v1/models
+  - /v1/chat/completions
+  - /v1/completions
+  - /v1/videos
+  - /v1/videos/*
+  tls-mode: cert-proxy
+  tls-challenge: dns
+  tls-own-san-domain: true
+  control-plane: https://api.inference.aptoslabs.com/
+  atc: http://10.0.2.2:8399
+cvm-network:
+  inbound-ports:
+  - 443
+cpus: 64
+memory: 524288
+gpus: 8
+models:
+- name: minimax-h3-fl2va
+  repo: model@1332deb833241c6daa758b04c0e1ad631de41b190c386b7576267b986328d625
+  mpk: 87721463756e43f0b64a59975b41e6798f43921cbfd4f69524be59ebb3a893a8_144051265536_a57648aa-2b9d-53d1-8572-5116af536194
+- name: qwen3-omni-30b-a3b-instruct
+  repo: Qwen/Qwen3-Omni-30B-A3B-Instruct@26291f793822fb6be9555850f06dfe95f2d7e695
+  mpk: 146b75f36614f6c597c09c5f7b62acd0a99c4f5d21c31a590fbd6ca68d053acc_70530605056_3ac824a9-5ee0-5130-9f87-1b94ff497b11
+containers:
+- name: mux
+  image: nginx:1.29.8@sha256:1881968aff6f7cdcc4b888c00a11f4ce241ad7ec957e0cb4a9e19e93a3ff87ea
+  restart: always
+  command:
+  - /bin/sh
+  - -c
+  - echo c2VydmVyIHsKICAgIGxpc3RlbiA4MDgwOwogICAgY2xpZW50X21heF9ib2R5X3NpemUgNGc7CiAgICBwcm94eV9odHRwX3ZlcnNpb24gMS4xOwogICAgcHJveHlfcmVhZF90aW1lb3V0IDE4MDBzOwogICAgcHJveHlfc2VuZF90aW1lb3V0IDE4MDBzOwogICAgcHJveHlfYnVmZmVyaW5nIG9mZjsKCiAgICAjIE1pbmlNYXgtSDMgRkwyVkEgdmlkZW8gZ2VuZXJhdGlvbgogICAgbG9jYXRpb24gL3YxL3ZpZGVvcyB7CiAgICAgICAgcHJveHlfcGFzcyBodHRwOi8vdmxsbS1vbW5pLW1pbmltYXg6ODAwMDsKICAgIH0KCiAgICAjIFF3ZW4zLU9tbmkgY2hhdC9tb2RlbHMvaGVhbHRoIChhbmQgYW55dGhpbmcgZWxzZSkKICAgIGxvY2F0aW9uIC8gewogICAgICAgIHByb3h5X3Bhc3MgaHR0cDovL3ZsbG0tb21uaS1xdWVuOjgwMDA7CiAgICB9Cn0K | base64 -d > /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'
+  healthcheck:
+    test:
+    - CMD
+    - curl
+    - -sf
+    - http://localhost:8080/health
+    interval: 30s
+    timeout: 10s
+    start_period: 90m
+- name: vllm-omni-minimax
+  image: vllm/vllm-omni:minimax-h3@sha256:e930db8e225162d01e17a49dddc43fd0e844208908d8356a028e5c4e7357696e
+  runtime: nvidia
+  gpus: all
+  ipc: private
+  shm_size: 64g
+  restart: always
+  env:
+  - VLLM_WORKER_MULTIPROC_METHOD
+  - VLLM_OMNI_VIDEO_SYNC_TIMEOUT
+  command:
+  - /bin/sh
+  - -c
+  - CUDA_VISIBLE_DEVICES=0,1,2,3 exec vllm serve /tinfoil/mpk/mpk-87721463756e43f0b64a59975b41e6798f43921cbfd4f69524be59ebb3a893a8/FL2VA --trust-remote-code --host=0.0.0.0 --num-gpus=4 --usp=4 --ring=1 --vae-patch-parallel-size=4 --vae-parallel-mode=tile --vae-use-tiling --port=8000 --omni
+  healthcheck:
+    test:
+    - CMD
+    - curl
+    - -sf
+    - http://localhost:8000/health
+    interval: 30s
+    timeout: 10s
+    start_period: 60m
+  tmpfs:
+    /tmp: size=20g,mode=1777,exec
+    /root: size=20g,mode=0700,exec
+- name: vllm-omni-qwen
+  image: vllm/vllm-omni:v0.28.0-x86_64@sha256:4780186f168af96634917208596675439fa71cb5ed3440a30e8c21ca1defc451
+  runtime: nvidia
+  gpus: all
+  ipc: private
+  shm_size: 64g
+  restart: always
+  env:
+  - VLLM_WORKER_MULTIPROC_METHOD
+  command:
+  - /bin/sh
+  - -c
+  - 'CUDA_VISIBLE_DEVICES=4,5,6,7 exec vllm serve /tinfoil/mpk/mpk-146b75f36614f6c597c09c5f7b62acd0a99c4f5d21c31a590fbd6ca68d053acc --omni --trust-remote-code --host=0.0.0.0 --port=8000 --stage-overrides ''{"1": {"num_replicas": 2, "devices": "1,2"}, "2": {"num_replicas": 1, "devices": "3"}}'''
+  healthcheck:
+    test:
+    - CMD
+    - curl
+    - -sf
+    - http://localhost:8000/health
+    interval: 30s
+    timeout: 10s
+    start_period: 60m
+  tmpfs:
+    /tmp: size=20g,mode=1777,exec
+    /root: size=20g,mode=0700,exec
