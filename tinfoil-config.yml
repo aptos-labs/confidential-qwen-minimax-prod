@@ -91,7 +91,7 @@ containers:
   command:
   - /bin/sh
   - -c
-  - 'CUDA_VISIBLE_DEVICES=4,5,6,7 exec vllm serve /tinfoil/mpk/mpk-146b75f36614f6c597c09c5f7b62acd0a99c4f5d21c31a590fbd6ca68d053acc --omni --trust-remote-code --host=0.0.0.0 --port=8000 --stage-overrides ''{"1": {"num_replicas": 2, "devices": "1,2"}, "2": {"num_replicas": 1, "devices": "3"}}'''
+  - 'CUDA_VISIBLE_DEVICES=4,5,6,7 exec vllm serve /tinfoil/mpk/mpk-146b75f36614f6c597c09c5f7b62acd0a99c4f5d21c31a590fbd6ca68d053acc --omni --trust-remote-code --host=0.0.0.0 --port=8000 --init-timeout 1800 --stage-init-timeout 900 --stage-overrides ''{"1": {"num_replicas": 2, "devices": "1,2"}, "2": {"num_replicas": 1, "devices": "3"}}'''
   healthcheck:
     test:
     - CMD
