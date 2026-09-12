@@ -9,8 +9,11 @@ eight-GPU H200 CVM.
 
 `tinfoil-config.yml` is the exact measured runtime exported from the production
 CVM specification (`cvmctl export-runtime -f vm-qwen-minimax-prod.yml`). It pins
-both model references and MPKs, the vLLM-Omni image digests, the nginx path-mux,
-resource allocation, and the complete container command lines.
+both model references and MPKs, LiteLLM and vLLM-Omni image digests, resource
+allocation, and all command lines. Three application containers share the
+`models` network: LiteLLM routes named Qwen chat requests and MiniMax multipart
+video requests to their respective servers. Measured gateway hooks preserve
+Qwen's multimodal stream and reject unsupported video methods.
 
 The release workflow uses Tinfoil's pinned measurement action to publish a
 Sigstore-signed deployment record and expected TDX measurements. A Tinfoil
