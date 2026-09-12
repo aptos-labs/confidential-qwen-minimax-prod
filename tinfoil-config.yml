@@ -1,9 +1,10 @@
 cvm-version: 0.11.0
 shim:
-  upstream-container: mux
+  upstream-container: vllm-omni
   upstream-port: 8080
   paths:
   - /health
+  - /healthz
   - /v1/models
   - /v1/chat/completions
   - /v1/completions
@@ -37,28 +38,12 @@ models:
   repo: Qwen/Qwen3-Omni-30B-A3B-Instruct@26291f793822fb6be9555850f06dfe95f2d7e695
   mpk: 146b75f36614f6c597c09c5f7b62acd0a99c4f5d21c31a590fbd6ca68d053acc_70530605056_3ac824a9-5ee0-5130-9f87-1b94ff497b11
 containers:
-- name: mux
-  image: nginx:1.29.8@sha256:1881968aff6f7cdcc4b888c00a11f4ce241ad7ec957e0cb4a9e19e93a3ff87ea
-  restart: always
-  command:
-  - /bin/sh
-  - -c
-  - echo c2VydmVyIHsKICAgIGxpc3RlbiA4MDgwOwogICAgY2xpZW50X21heF9ib2R5X3NpemUgNGc7CiAgICBwcm94eV9odHRwX3ZlcnNpb24gMS4xOwogICAgcHJveHlfcmVhZF90aW1lb3V0IDE4MDBzOwogICAgcHJveHlfc2VuZF90aW1lb3V0IDE4MDBzOwogICAgcHJveHlfYnVmZmVyaW5nIG9mZjsKCiAgICAjIE1pbmlNYXgtSDMgRkwyVkEgdmlkZW8gZ2VuZXJhdGlvbgogICAgbG9jYXRpb24gL3YxL3ZpZGVvcyB7CiAgICAgICAgcHJveHlfcGFzcyBodHRwOi8vdmxsbS1vbW5pLW1pbmltYXg6ODAwMDsKICAgIH0KCiAgICAjIFF3ZW4zLU9tbmkgY2hhdC9tb2RlbHMvaGVhbHRoIChhbmQgYW55dGhpbmcgZWxzZSkKICAgIGxvY2F0aW9uIC8gewogICAgICAgIHByb3h5X3Bhc3MgaHR0cDovL3ZsbG0tb21uaS1xdWVuOjgwMDA7CiAgICB9Cn0K | base64 -d > /etc/nginx/conf.d/default.conf && nginx -g 'daemon off;'
-  healthcheck:
-    test:
-    - CMD
-    - curl
-    - -sf
-    - http://localhost:8080/health
-    interval: 30s
-    timeout: 10s
-    start_period: 90m
-- name: vllm-omni-minimax
-  image: vllm/vllm-omni:minimax-h3@sha256:e930db8e225162d01e17a49dddc43fd0e844208908d8356a028e5c4e7357696e
+- name: vllm-omni
+  image: vllm/vllm-omni:v0.28.0-x86_64@sha256:4780186f168af96634917208596675439fa71cb5ed3440a30e8c21ca1defc451
   runtime: nvidia
   gpus: all
   ipc: private
-  shm_size: 64g
+  shm_size: 128g
   restart: always
   env:
   - VLLM_WORKER_MULTIPROC_METHOD
@@ -66,41 +51,16 @@ containers:
   command:
   - /bin/sh
   - -c
-  - CUDA_VISIBLE_DEVICES=0,1,2,3 exec vllm serve /tinfoil/mpk/mpk-87721463756e43f0b64a59975b41e6798f43921cbfd4f69524be59ebb3a893a8/FL2VA --trust-remote-code --host=0.0.0.0 --num-gpus=4 --usp=4 --ring=1 --vae-patch-parallel-size=4 --vae-parallel-mode=tile --vae-use-tiling --port=8000 --omni
+  - 'echo IiIiSW4tY29udGFpbmVyIEFQSSBtdXggZm9yIHRoZSBkdWFsLW1vZGVsIENWTS4KClNpbmdsZSBzaGltIHVwc3RyZWFtOiByb3V0ZXMgL3YxL3ZpZGVvcyogdG8gTWluaU1heCBGTDJWQSAoOjgwMDEpIGFuZApldmVyeXRoaW5nIGVsc2UgdG8gUXdlbjMtT21uaSAoOjgwMDApLiAvaGVhbHRoeiBhZ2dyZWdhdGVzIGJvdGggYmFja2VuZHMuCi92MS9tb2RlbHMgbWVyZ2VzIGJvdGggYmFja2VuZHMnIG1vZGVsIGxpc3RzLgoKUnVucyBpbnNpZGUgdGhlIG9uZSB3b3JrbG9hZCBjb250YWluZXIgKGRvY2tlciBJQ0MgaXMgZGlzYWJsZWQgYnkgZGVzaWduIGluCnRoZSBDVk0sIHNvIHRoZSBmYW4tb3V0IGhhcHBlbnMgb3ZlciBsb29wYmFjaywgbm90IGRvY2tlciBuZXR3b3JrcykuCiIiIgoKaW1wb3J0IHRpbWUKCmZyb20gYWlvaHR0cCBpbXBvcnQgQ2xpZW50U2Vzc2lvbiwgQ2xpZW50VGltZW91dCwgVENQQ29ubmVjdG9yLCB3ZWIKClFXRU4gPSAiaHR0cDovLzEyNy4wLjAuMTo4MDAwIgpNSU5JTUFYID0gImh0dHA6Ly8xMjcuMC4wLjE6ODAwMSIKIyBWaWRlbyBnZW5lcmF0aW9uIGNhbiBydW4gZm9yIHRlbnMgb2YgbWludXRlcyAoc3luYyBlbmRwb2ludCkuCkxPTkcgPSBDbGllbnRUaW1lb3V0KHRvdGFsPTM2MDAsIGNvbm5lY3Q9MTApCgoKYXN5bmMgZGVmIF9oZWFsdGh5KHNlc3Npb24sIGJhc2UpOgogICAgdHJ5OgogICAgICAgIGFzeW5jIHdpdGggc2Vzc2lvbi5nZXQoYmFzZSArICIvaGVhbHRoIiwgdGltZW91dD1DbGllbnRUaW1lb3V0KHRvdGFsPTUpKSBhcyByOgogICAgICAgICAgICByZXR1cm4gci5zdGF0dXMgPT0gMjAwCiAgICBleGNlcHQgRXhjZXB0aW9uOgogICAgICAgIHJldHVybiBGYWxzZQoKCmFzeW5jIGRlZiBoZWFsdGh6KHJlcXVlc3QpOgogICAgYXN5bmMgd2l0aCBDbGllbnRTZXNzaW9uKGNvbm5lY3Rvcj1UQ1BDb25uZWN0b3IoKSkgYXMgczoKICAgICAgICBxLCBtID0gYXdhaXQgX2hlYWx0aHkocywgUVdFTiksIGF3YWl0IF9oZWFsdGh5KHMsIE1JTklNQVgpCiAgICBzdGF0dXMgPSAyMDAgaWYgKHEgYW5kIG0pIGVsc2UgNTAzCiAgICByZXR1cm4gd2ViLmpzb25fcmVzcG9uc2UoeyJxd2VuIjogcSwgIm1pbmltYXgiOiBtfSwgc3RhdHVzPXN0YXR1cykKCgphc3luYyBkZWYgbW9kZWxzKHJlcXVlc3QpOgogICAgb3V0ID0gW10KICAgIGFzeW5jIHdpdGggQ2xpZW50U2Vzc2lvbihjb25uZWN0b3I9VENQQ29ubmVjdG9yKCkpIGFzIHM6CiAgICAgICAgZm9yIGJhc2UgaW4gKFFXRU4sIE1JTklNQVgpOgogICAgICAgICAgICB0cnk6CiAgICAgICAgICAgICAgICBhc3luYyB3aXRoIHMuZ2V0KGJhc2UgKyAiL3YxL21vZGVscyIsIHRpbWVvdXQ9Q2xpZW50VGltZW91dCh0b3RhbD0xMCkpIGFzIHI6CiAgICAgICAgICAgICAgICAgICAgaWYgci5zdGF0dXMgPT0gMjAwOgogICAgICAgICAgICAgICAgICAgICAgICBvdXQuZXh0ZW5kKChhd2FpdCByLmpzb24oKSkuZ2V0KCJkYXRhIiwgW10pKQogICAgICAgICAgICBleGNlcHQgRXhjZXB0aW9uOgogICAgICAgICAgICAgICAgcGFzcwogICAgcmV0dXJuIHdlYi5qc29uX3Jlc3BvbnNlKHsib2JqZWN0IjogImxpc3QiLCAiZGF0YSI6IG91dH0pCgoKYXN5bmMgZGVmIHByb3h5KHJlcXVlc3QpOgogICAgYmFzZSA9IE1JTklNQVggaWYgcmVxdWVzdC5wYXRoLnN0YXJ0c3dpdGgoIi92MS92aWRlb3MiKSBlbHNlIFFXRU4KICAgIGJvZHkgPSBhd2FpdCByZXF1ZXN0LnJlYWQoKQogICAgaGVhZGVycyA9IHtrOiB2IGZvciBrLCB2IGluIHJlcXVlc3QuaGVhZGVycy5pdGVtcygpCiAgICAgICAgICAgICAgIGlmIGsubG93ZXIoKSBub3QgaW4gKCJob3N0IiwgImNvbnRlbnQtbGVuZ3RoIiwgInRyYW5zZmVyLWVuY29kaW5nIil9CiAgICBhc3luYyB3aXRoIENsaWVudFNlc3Npb24oY29ubmVjdG9yPVRDUENvbm5lY3RvcigpKSBhcyBzOgogICAgICAgIGFzeW5jIHdpdGggcy5yZXF1ZXN0KHJlcXVlc3QubWV0aG9kLCBiYXNlICsgcmVxdWVzdC5wYXRoX3FzLAogICAgICAgICAgICAgICAgICAgICAgICAgICAgIGRhdGE9Ym9keSwgaGVhZGVycz1oZWFkZXJzLCB0aW1lb3V0PUxPTkcpIGFzIHVwOgogICAgICAgICAgICByZXNwID0gd2ViLlN0cmVhbVJlc3BvbnNlKHN0YXR1cz11cC5zdGF0dXMpCiAgICAgICAgICAgIGZvciBrLCB2IGluIHVwLmhlYWRlcnMuaXRlbXMoKToKICAgICAgICAgICAgICAgIGlmIGsubG93ZXIoKSBub3QgaW4gKCJjb250ZW50LWxlbmd0aCIsICJ0cmFuc2Zlci1lbmNvZGluZyIsCiAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAiY29ubmVjdGlvbiIsICJjb250ZW50LWVuY29kaW5nIik6CiAgICAgICAgICAgICAgICAgICAgcmVzcC5oZWFkZXJzW2tdID0gdgogICAgICAgICAgICByZXNwLmhlYWRlcnNbIkNvbnRlbnQtVHlwZSJdID0gdXAuaGVhZGVycy5nZXQoIkNvbnRlbnQtVHlwZSIsICJhcHBsaWNhdGlvbi9vY3RldC1zdHJlYW0iKQogICAgICAgICAgICBhd2FpdCByZXNwLnByZXBhcmUocmVxdWVzdCkKICAgICAgICAgICAgYXN5bmMgZm9yIGNodW5rIGluIHVwLmNvbnRlbnQuaXRlcl9hbnkoKToKICAgICAgICAgICAgICAgIGF3YWl0IHJlc3Aud3JpdGUoY2h1bmspCiAgICAgICAgICAgIGF3YWl0IHJlc3Aud3JpdGVfZW9mKCkKICAgICAgICAgICAgcmV0dXJuIHJlc3AKCgphcHAgPSB3ZWIuQXBwbGljYXRpb24oKQphcHAucm91dGVyLmFkZF9yb3V0ZSgiKiIsICIvaGVhbHRoeiIsIGhlYWx0aHopCmFwcC5yb3V0ZXIuYWRkX3JvdXRlKCJHRVQiLCAiL3YxL21vZGVscyIsIG1vZGVscykKYXBwLnJvdXRlci5hZGRfcm91dGUoIioiLCAiL3t0YWlsOi4qfSIsIHByb3h5KQoKaWYgX19uYW1lX18gPT0gIl9fbWFpbl9fIjoKICAgICMgVGhlIHNoaW0gZGlhbHMgdGhpcyBjb250YWluZXIgb3ZlciBzaGltLW5ldCwgc28gbGlzdGVuIG9uIGFsbAogICAgIyBpbnRlcmZhY2VzOyB0aGUgdHdvIHZMTE0gc2VydmVycyBzdGF5IGxvb3BiYWNrLW9ubHkuCiAgICB3ZWIucnVuX2FwcChhcHAsIGhvc3Q9IjAuMC4wLjAiLCBwb3J0PTgwODAsCiAgICAgICAgICAgICAgICBwcmludD1sYW1iZGEgKmE6IHByaW50KHRpbWUuc3RyZnRpbWUoIiVUIiksICphKSkK | base64 -d > /tmp/mux.py; ( while true; do CUDA_VISIBLE_DEVICES=4,5,6,7 vllm serve /tinfoil/mpk/mpk-146b75f36614f6c597c09c5f7b62acd0a99c4f5d21c31a590fbd6ca68d053acc --omni --trust-remote-code --host=127.0.0.1 --port=8000 --init-timeout 1800 --stage-init-timeout 900 --stage-overrides ''{"1": {"num_replicas": 2, "devices": "1,2"}, "2": {"num_replicas": 1, "devices": "3"}}'' ; sleep 10; done ) & ( while true; do CUDA_VISIBLE_DEVICES=0,1,2,3 vllm serve /tinfoil/mpk/mpk-87721463756e43f0b64a59975b41e6798f43921cbfd4f69524be59ebb3a893a8/FL2VA --trust-remote-code --host=127.0.0.1 --num-gpus=4 --usp=4 --ring=1 --vae-patch-parallel-size=4 --vae-parallel-mode=tile --vae-use-tiling --port=8001 --omni ; sleep 10; done ) & ( while true; do python3 /tmp/mux.py ; sleep 3; done ) & wait'
   healthcheck:
     test:
     - CMD
     - curl
     - -sf
-    - http://localhost:8000/health
+    - http://localhost:8080/healthz
     interval: 30s
     timeout: 10s
     start_period: 60m
   tmpfs:
-    /tmp: size=20g,mode=1777,exec
-    /root: size=20g,mode=0700,exec
-- name: vllm-omni-qwen
-  image: vllm/vllm-omni:v0.28.0-x86_64@sha256:4780186f168af96634917208596675439fa71cb5ed3440a30e8c21ca1defc451
-  runtime: nvidia
-  gpus: all
-  ipc: private
-  shm_size: 64g
-  restart: always
-  env:
-  - VLLM_WORKER_MULTIPROC_METHOD
-  command:
-  - /bin/sh
-  - -c
-  - 'CUDA_VISIBLE_DEVICES=4,5,6,7 exec vllm serve /tinfoil/mpk/mpk-146b75f36614f6c597c09c5f7b62acd0a99c4f5d21c31a590fbd6ca68d053acc --omni --trust-remote-code --host=0.0.0.0 --port=8000 --init-timeout 1800 --stage-init-timeout 900 --stage-overrides ''{"1": {"num_replicas": 2, "devices": "1,2"}, "2": {"num_replicas": 1, "devices": "3"}}'''
-  healthcheck:
-    test:
-    - CMD
-    - curl
-    - -sf
-    - http://localhost:8000/health
-    interval: 30s
-    timeout: 10s
-    start_period: 60m
-  tmpfs:
-    /tmp: size=20g,mode=1777,exec
+    /tmp: size=40g,mode=1777,exec
     /root: size=20g,mode=0700,exec
