@@ -12,6 +12,24 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  policy:
+    name: Test image policies and scripts
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - name: Check out PR source
+        uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+        with:
+          persist-credentials: false
+
+      - name: Run workflow and script tests
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 -m venv "$RUNNER_TEMP/image-policy-tests"
+          "$RUNNER_TEMP/image-policy-tests/bin/python" -m pip install --no-cache-dir pytest==9.1.1 PyYAML==6.0.3
+          "$RUNNER_TEMP/image-policy-tests/bin/python" -m pytest -q tests
+
   gateway:
     name: Test paid gateway
     runs-on: ubuntu-latest
