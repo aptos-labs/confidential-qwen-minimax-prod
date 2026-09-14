@@ -37,6 +37,8 @@ jobs:
     env:
       IMAGE_CONTEXT: images/paid-gateway
       MIN_FREE_GIB: '4'
+      SMOKE_KIND: gateway
+      LOCAL_IMAGE: ccs-gateway:ci
     steps:
       - name: Check out PR source
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
@@ -77,6 +79,25 @@ jobs:
           push: false
           load: false
           provenance: false
+
+      - name: Load the final runtime image locally
+        id: runtime
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f
+        with:
+          context: ${{ env.IMAGE_CONTEXT }}
+          target: runtime
+          platforms: linux/amd64
+          push: false
+          load: true
+          provenance: false
+          tags: ${{ env.LOCAL_IMAGE }}
+
+      - name: Smoke the final image without capabilities or network
+        id: smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/smoke_image.py "$SMOKE_KIND" "$LOCAL_IMAGE" --local
 
   qwen:
     name: Test metered Qwen
@@ -85,6 +106,8 @@ jobs:
     env:
       IMAGE_CONTEXT: images/qwen-metered
       MIN_FREE_GIB: '24'
+      SMOKE_KIND: qwen
+      LOCAL_IMAGE: ccs-qwen:ci
     steps:
       - name: Check out PR source
         uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
@@ -125,3 +148,22 @@ jobs:
           push: false
           load: false
           provenance: false
+
+      - name: Load the final runtime image locally
+        id: runtime
+        uses: docker/build-push-action@bcafcacb16a39f128d818304e6c9c0c18556b85f
+        with:
+          context: ${{ env.IMAGE_CONTEXT }}
+          target: runtime
+          platforms: linux/amd64
+          push: false
+          load: true
+          provenance: false
+          tags: ${{ env.LOCAL_IMAGE }}
+
+      - name: Smoke the final image without capabilities or network
+        id: smoke
+        shell: bash
+        run: |
+          set -euo pipefail
+          python3 scripts/smoke_image.py "$SMOKE_KIND" "$LOCAL_IMAGE" --local

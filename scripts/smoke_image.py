@@ -19,6 +19,8 @@ GATEWAY = r"""
 import http.client,json,os,pathlib,subprocess,sys,time
 assert sys.executable == '/app/.venv/bin/python3',sys.executable
 root=pathlib.Path('/opt/ccs-gateway/paid_gateway'); expected=pathlib.Path('/expected')
+for directory in (root.parent,root):
+ assert directory.stat().st_mode & 0o777 == 0o555,directory
 assert {p.name for p in root.glob('*.py')}=={p.name for p in expected.glob('*.py')}
 for source in expected.glob('*.py'):
  assert (root/source.name).read_bytes()==source.read_bytes(),source.name
@@ -81,6 +83,8 @@ with log.open('wb') as output:
 QWEN = r"""
 import importlib.metadata,json,pathlib,sys
 artifact=pathlib.Path('/opt/model-metering'); expected=pathlib.Path('/expected')
+assert artifact.stat().st_mode & 0o777 == 0o555,artifact
+assert not (artifact/'tests').exists()
 for name in ('install.py','input_meter.py','manifest.json','vllm-omni-v0.28.0.patch'):
  assert (artifact/name).read_bytes()==(expected/name).read_bytes(),name
 sys.path.insert(0,str(artifact));from install import preflight

@@ -2,6 +2,7 @@ FROM docker.io/vllm/vllm-omni@sha256:4780186f168af96634917208596675439fa71cb5ed3
 
 FROM upstream AS runtime-base
 COPY --chmod=0444 model-metering/install.py model-metering/input_meter.py model-metering/manifest.json model-metering/vllm-omni-v0.28.0.patch /opt/model-metering/
+RUN chmod 0555 /opt/model-metering
 RUN python3 /opt/model-metering/install.py \
     && python3 -c "import sys; sys.path.insert(0, '/opt/model-metering'); from importlib.metadata import distribution; from pathlib import Path; from install import preflight; root=Path(distribution('vllm-omni').locate_file('vllm_omni')).resolve(); assert preflight(root).already_installed, 'meter is not installed'"
 
