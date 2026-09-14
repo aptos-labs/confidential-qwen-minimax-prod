@@ -1,0 +1,11 @@
+model_list:
+  - model_name: qwen3-omni
+    litellm_params:
+      model: openai/qwen3-omni
+      api_base: http://vllm-omni-qwen:8000/v1
+  - model_name: minimax-h3-fl2va
+    litellm_params:
+      model: openai/minimax-h3-fl2va
+      api_base: http://vllm-omni-minimax:8001/v1
+    model_info:
+      mode: video
