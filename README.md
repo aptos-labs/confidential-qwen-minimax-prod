@@ -32,10 +32,11 @@ CVM and verifies the attested TLS/HPKE key binding.
 
 ## Readable sources and OCI migration
 
-The `images/` sources prepare the replacement for v0.0.5; adding them does **not**
-change the published runtime or fix an already deployed v0.0.5 VM. Until both new
-images are built and verified, `tinfoil-config.yml` remains the historical runtime.
-Do not publish a new runtime from this preparation step.
+The v0.0.6 release replaced the source bundles with verified OCI images. The
+runtime no longer extracts gateway code or installs the Qwen patch at boot.
+The next runtime candidate changes the CPU allocation to the signed hardware
+profile below; it reuses the same verified image digests. Published v0.0.5 and
+v0.0.6 tags and assets remain immutable.
 
 - `images/paid-gateway/` contains the mandatory gateway, its baked LiteLLM config,
   entrypoint, and offline tests. Runtime code uses the pinned LiteLLM application's
@@ -113,9 +114,27 @@ and independently reconciled usage remain cutover gates. Infrastructure approval
 and a separately reviewed billing-activation change are still required. Neither
 image publication nor a runtime release activates billing or enrolls accounts/keys.
 
+## Approved hardware profile
+
+The Model CVM targets `extra_large_2d_v011` from the signed
+[`tinfoilsh/hardware-measurements` v0.0.41](https://github.com/tinfoilsh/hardware-measurements/tree/v0.0.41)
+policy: **32 vCPUs, 512 GiB RAM, five disks and Hopper topology**. The five disks
+are root, measured config, external config and the two model volumes; the Hopper
+layout uses eight GPUs and four NVSwitch ports. The `_v011` variant uses the
+modern virtio PCI layout. See the publisher's `platform.json` and `measure.py`
+for the independently specified baseline.
+
+The earlier 64-vCPU configuration is not in that policy. A valid TDX signature
+and matching application measurements do not make an unlisted hardware profile
+acceptable. Do not add observed runtime hashes to a local allowlist or weaken the
+verifier. This candidate changes only the CPU allocation; retain the existing
+model/MPK pins, eight H200s, RAM, OCI digests, CUDA split, networking and native
+secret slots. A fresh live quote must still pass every unchanged verification
+step after deployment; matching these dimensions alone is not acceptance.
+
 ## Runtime release process
 
-1. Update the production `cvmctl` spec with the verified image digests.
+1. Update the production `cvmctl` spec with the verified image digests and approved hardware shape.
 2. Export its exact measured runtime:
 
    ```bash
@@ -128,8 +147,11 @@ image publication nor a runtime release activates billing or enrolls accounts/ke
 5. Deploy that exact production specification, setting its metadata repository
    and tag to this repository and release.
 
-Any runtime change—including a model, MPK, image digest, mux rule, or vLLM
-arguments—requires a new release before deployment.
+Any runtime change—including CPU/RAM allocation, a model, MPK, image digest,
+mux rule, or vLLM arguments—requires a new release before deployment. Before
+stopping a running VM, populate the protected host-side copy's native private
+bindings and verify that its exported runtime hash equals the reviewed release.
+Never apply the public template's empty secret placeholders.
 
 ## Security boundaries
 

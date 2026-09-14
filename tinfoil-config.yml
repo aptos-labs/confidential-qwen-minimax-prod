@@ -22,7 +22,7 @@ shim:
 cvm-network:
   inbound-ports:
   - 443
-cpus: 64
+cpus: 32
 memory: 524288
 gpus: 8
 models:

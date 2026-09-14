@@ -292,3 +292,12 @@ def test_source_directories_remain_searchable_without_dac_capabilities(context, 
     assert dockerfile.index(fix) < dockerfile.index("FROM runtime-base AS test")
     program = smoke_image.GATEWAY if context == "paid-gateway" else smoke_image.QWEN
     assert ".stat().st_mode & 0o777 == 0o555" in program
+
+
+def test_tinfoil_runtime_matches_signed_extra_large_2d_v011_shape():
+    document = yaml.safe_load((ROOT / "tinfoil-config.yml").read_text(encoding="utf-8"))
+    assert document["cpus"] == 32
+    assert document["memory"] == 524288
+    assert document["gpus"] == 8
+    assert len(document["models"]) == 2
+    assert len(document["containers"]) == 3
