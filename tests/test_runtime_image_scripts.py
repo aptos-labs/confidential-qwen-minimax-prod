@@ -276,3 +276,19 @@ def test_all_workflow_shell_and_python_blocks_parse():
                     python_count += 1
     assert shell_count >= 16
     assert python_count >= 7
+
+
+@pytest.mark.parametrize(
+    "context,directories",
+    [
+        ("paid-gateway", "/opt/ccs-gateway /opt/ccs-gateway/paid_gateway"),
+        ("qwen-metered", "/opt/model-metering"),
+    ],
+)
+def test_source_directories_remain_searchable_without_dac_capabilities(context, directories):
+    dockerfile = (ROOT / "images" / context / "Dockerfile").read_text(encoding="utf-8")
+    fix = "RUN chmod 0555 " + directories
+    assert dockerfile.index("COPY --chmod=0444") < dockerfile.index(fix)
+    assert dockerfile.index(fix) < dockerfile.index("FROM runtime-base AS test")
+    program = smoke_image.GATEWAY if context == "paid-gateway" else smoke_image.QWEN
+    assert ".stat().st_mode & 0o777 == 0o555" in program

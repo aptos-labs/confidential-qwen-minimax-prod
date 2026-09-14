@@ -63,8 +63,11 @@ These are source fixes for a **new** image/runtime release, not a change to v0.0
 
 1. Review and merge the readable source/image PR. Inspect **every review thread**,
    including neutral/comment-only bot reviews; green checks alone are insufficient.
-   PR CI runs policy/script tests and both Dockerfile `test` targets without
-   registry, attestation, or deployment privileges.
+   PR CI runs policy/script tests, both Dockerfile `test` targets, and final-runtime
+   smoke checks with all capabilities dropped, read-only roots, and no network.
+   It has no registry, attestation, or deployment privileges. Source directories
+   must remain searchable without DAC capabilities; privileged build tests alone
+   do not establish this.
 2. Dispatch **Publish runtime images** on the reviewed `main` commit, passing its
    full 40-character hash as `source_sha`. Checkout, workflow SHA, and main ancestry
    must all agree. A branch or image tag is not proof of reviewed content.

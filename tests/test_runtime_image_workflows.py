@@ -239,15 +239,38 @@ class WorkflowPolicyTests(unittest.TestCase):
             gate["steps"].index(step_by_id(gate, "anonymous_smoke")),
         )
 
-    def test_pr_only_builds_test_target_and_never_logs_in_or_publishes(self):
+    def test_pr_tests_and_smokes_without_logging_in_or_publishing(self):
         for kind in IMAGES:
             job = self.validate["jobs"][kind]
             self.assertEqual(
                 [step["uses"].split("@")[0] for step in job["steps"] if "uses" in step],
-                ["actions/checkout", "docker/setup-buildx-action", "docker/build-push-action"],
+                [
+                    "actions/checkout",
+                    "docker/setup-buildx-action",
+                    "docker/build-push-action",
+                    "docker/build-push-action",
+                ],
             )
+            test, runtime, smoke = (step_by_id(job, name) for name in ("test", "runtime", "smoke"))
+            self.assertEqual(action_steps(job, "docker/build-push-action"), [test, runtime])
             self.assertEqual(
-                action_steps(job, "docker/build-push-action"), [step_by_id(job, "test")]
+                runtime["with"],
+                {
+                    "context": "${{ env.IMAGE_CONTEXT }}",
+                    "target": "runtime",
+                    "platforms": "linux/amd64",
+                    "push": "false",
+                    "load": "true",
+                    "provenance": "false",
+                    "tags": "${{ env.LOCAL_IMAGE }}",
+                },
+            )
+            self.assertLess(job["steps"].index(test), job["steps"].index(runtime))
+            self.assertLess(job["steps"].index(runtime), job["steps"].index(smoke))
+            self.assertEqual(job["env"]["SMOKE_KIND"], kind)
+            self.assertIn(
+                'python3 scripts/smoke_image.py "$SMOKE_KIND" "$LOCAL_IMAGE" --local',
+                smoke["run"],
             )
             self.assertNotRegex(json.dumps(job), r"docker (push|login)|ghcr\.io|attest-build")
 

@@ -4,6 +4,7 @@ ENV PYTHONPATH=/opt/ccs-gateway PYTHONDONTWRITEBYTECODE=1 PYTHONNOUSERSITE=1
 COPY --chmod=0444 paid_gateway/*.py /opt/ccs-gateway/paid_gateway/
 COPY --chmod=0444 litellm.yaml /opt/ccs-gateway/litellm.yaml
 COPY --chmod=0555 entrypoint.sh /opt/ccs-gateway/entrypoint.sh
+RUN chmod 0555 /opt/ccs-gateway /opt/ccs-gateway/paid_gateway
 ENTRYPOINT ["/opt/ccs-gateway/entrypoint.sh"]
 CMD []
 
