@@ -11,9 +11,19 @@ eight-GPU H200 CVM.
 CVM specification (`cvmctl export-runtime -f vm-qwen-minimax-prod.yml`). It pins
 both model references and MPKs, LiteLLM and vLLM-Omni image digests, resource
 allocation, and all command lines. Three application containers share the
-`models` network: LiteLLM routes named Qwen chat requests and MiniMax multipart
-video requests to their respective servers. Measured gateway hooks preserve
-Qwen's multimodal stream and reject unsupported video methods.
+`models` network. A mandatory paid gateway starts before LiteLLM and admits
+Qwen chat/audio and MiniMax multipart video requests through CCS before calling
+the model servers. It validates output meters and persists checkpoints before
+releasing output, with no optional paid flag, worker-hook installation or free
+fallback. Qwen input-meter code is staged into a private temporary import overlay;
+the pinned image's site-packages and root filesystem remain read-only.
+
+The v0.0.5 candidate has runtime SHA-256
+`14cec7260731d54d538b75e2d06e5072029c4be3549f4c88dd962eccc9cf8111`.
+This is the runtime digest, not the release attestation lookup digest. Publishing
+changes the latest expected measurement used by routers and must be coordinated
+with the Model CVM cutover. It does not activate the separately reviewed CCS
+billing policy or enroll API keys.
 
 The release workflow uses Tinfoil's pinned measurement action to publish a
 Sigstore-signed deployment record and expected TDX measurements. A Tinfoil
@@ -41,4 +51,8 @@ arguments—requires a new release before deployment.
 ## Security boundaries
 
 This repository intentionally contains no credentials. The certificate
-authorization token remains only in the protected host-side CVM specification.
+authorization token and native `USAGE_REPORTER_SECRET` remain only in the protected
+external configuration. The gateway's CCS destination and reporter identity are
+fixed in measured code. Missing or invalid reporter credentials fail startup;
+unmapped keys and unavailable admission fail closed. Both production models
+require explicit active account/key mappings and validated usage settlement.
