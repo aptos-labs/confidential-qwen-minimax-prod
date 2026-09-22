@@ -330,7 +330,15 @@ class PaidGateway:
             return
         path = scope.get("path", "")
         if (
-            path in {"/v1/models", "/health/liveliness", "/health/readiness", "/healthz"}
+            path
+            in {
+                "/v1/models",
+                "/health",
+                "/health/liveliness",
+                "/health/readiness",
+                "/healthz",
+                "/metrics",
+            }
             and scope["method"] == "GET"
         ):
             await self.app(scope, receive, send)

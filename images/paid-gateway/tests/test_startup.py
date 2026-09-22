@@ -50,6 +50,35 @@ def test_unconditional_boundary_and_cleanup(monkeypatch, flag):
     asyncio.run(gateway.close())
 
 
+def test_unauthenticated_get_observability_paths_pass_through(monkeypatch):
+    monkeypatch.setenv("USAGE_REPORTER_SECRET", SECRET)
+    async def lifespan(app):
+        @app.get("/health")
+        async def health():
+            return {"status": "ok"}
+
+        @app.get("/metrics")
+        async def metrics():
+            return "# HELP up\\n# TYPE up gauge\\nup 1\\n"
+
+        @app.get("/v1/models")
+        async def models():
+            return {"data": []}
+
+        yield
+
+    app = FastAPI(lifespan=lifespan)
+    gateway = install(app)
+    with TestClient(app) as client:
+        assert client.get("/health").status_code == 200
+        assert client.get("/metrics").status_code == 200
+        assert client.get("/v1/models").status_code == 200
+        assert client.post("/health", json={}).status_code == 404
+        assert client.post("/metrics", json={}).status_code == 404
+        assert client.get("/v1/chat/completions").status_code == 405
+    assert gateway.billing.client.is_closed and gateway.upstream.is_closed
+
+
 @pytest.mark.parametrize("model", ["qwen3-omni", "minimax-h3-fl2va"])
 def test_both_production_models_require_admission_before_upstream(monkeypatch, model):
     from paid_gateway.client import BillingClient
