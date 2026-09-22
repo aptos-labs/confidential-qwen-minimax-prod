@@ -38,7 +38,7 @@ networks:
   models: {}
 containers:
 - name: litellm
-  image: ghcr.io/aptos-labs/confidential-qwen-minimax-paid-gateway@sha256:a6f4141f26e6294eea8d76fd33fec5137e28d3efe26eb4d270956087568534e6
+  image: ghcr.io/aptos-labs/confidential-qwen-minimax-paid-gateway@sha256:9de0c62233566f90b20df3644e54230ffb2bebf47051c15263e657f45aae70c4
   restart: always
   networks:
   - models
