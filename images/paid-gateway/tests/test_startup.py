@@ -53,14 +53,6 @@ def test_unconditional_boundary_and_cleanup(monkeypatch, flag):
 def test_unauthenticated_get_observability_paths_pass_through(monkeypatch):
     monkeypatch.setenv("USAGE_REPORTER_SECRET", SECRET)
     async def lifespan(app):
-        @app.get("/health")
-        async def health():
-            return {"status": "ok"}
-
-        @app.get("/metrics")
-        async def metrics():
-            return "# HELP up\\n# TYPE up gauge\\nup 1\\n"
-
         @app.get("/v1/models")
         async def models():
             return {"data": []}
@@ -69,13 +61,31 @@ def test_unauthenticated_get_observability_paths_pass_through(monkeypatch):
 
     app = FastAPI(lifespan=lifespan)
     gateway = install(app)
+    requests = []
+
+    def proxy(request):
+        requests.append(request.url.path)
+        if request.url.path == "/health":
+            return httpx.Response(200, json={"status": "ok"})
+        if request.url.path == "/metrics":
+            return httpx.Response(
+                200, text="# HELP up\\n# TYPE up gauge\\nup 1\\n", headers={"Content-Type": "text/plain"}
+            )
+        return httpx.Response(404)
+
+    gateway.upstream = httpx.AsyncClient(transport=httpx.MockTransport(proxy))
     with TestClient(app) as client:
-        assert client.get("/health").status_code == 200
-        assert client.get("/metrics").status_code == 200
+        health = client.get("/health")
+        assert health.status_code == 200
+        assert health.json()["status"] == "ok"
+        metrics = client.get("/metrics")
+        assert metrics.status_code == 200
+        assert "up 1" in metrics.text
         assert client.get("/v1/models").status_code == 200
         assert client.post("/health", json={}).status_code == 404
         assert client.post("/metrics", json={}).status_code == 404
         assert client.get("/v1/chat/completions").status_code == 405
+    assert requests == ["/health", "/health", "/metrics", "/metrics"]
     assert gateway.billing.client.is_closed and gateway.upstream.is_closed
 
 

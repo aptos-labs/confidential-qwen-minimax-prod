@@ -291,6 +291,10 @@ class PaidGateway:
             QWEN: "http://vllm-omni-qwen:8000/v1/chat/completions",
             VIDEO: "http://vllm-omni-minimax:8001/v1/videos/sync",
         }
+        self.observability_targets = (
+            "http://vllm-omni-qwen:8000",
+            "http://vllm-omni-minimax:8001",
+        )
 
     async def close(self) -> None:
         """Close both clients once, including when one client's cleanup fails."""
@@ -333,15 +337,19 @@ class PaidGateway:
             path
             in {
                 "/v1/models",
-                "/health",
                 "/health/liveliness",
                 "/health/readiness",
                 "/healthz",
-                "/metrics",
             }
             and scope["method"] == "GET"
         ):
             await self.app(scope, receive, send)
+            return
+        if path == "/health" and scope["method"] == "GET":
+            await self.health(scope, receive, send)
+            return
+        if path == "/metrics" and scope["method"] == "GET":
+            await self.metrics(scope, receive, send)
             return
         if path not in {CHAT_PATH, VIDEO_PATH}:
             await JSONResponse({"error": {"code": "unsupported_endpoint"}}, status_code=404)(
@@ -419,6 +427,44 @@ class PaidGateway:
                 )
             except ClientDisconnect:
                 return
+
+    async def _backend_get(self, suffix: str) -> list[httpx.Response | Exception]:
+        async def fetch(base: str) -> httpx.Response | Exception:
+            try:
+                return await self.upstream.get(base + suffix)
+            except httpx.HTTPError as exc:
+                return exc
+
+        return list(
+            await asyncio.gather(*(fetch(base) for base in self.observability_targets))
+        )
+
+    async def health(self, scope: Scope, receive: Receive, send: Send) -> None:
+        results = await self._backend_get("/health")
+        backends = [
+            {
+                "endpoint": endpoint,
+                "status": result.status_code if isinstance(result, httpx.Response) else None,
+            }
+            for endpoint, result in zip(self.observability_targets, results, strict=True)
+        ]
+        healthy = all(item["status"] == 200 for item in backends)
+        await JSONResponse(
+            {"status": "ok" if healthy else "unhealthy", "backends": backends},
+            status_code=200 if healthy else 503,
+        )(scope, receive, send)
+
+    async def metrics(self, scope: Scope, receive: Receive, send: Send) -> None:
+        results = await self._backend_get("/metrics")
+        if any(not isinstance(result, httpx.Response) or result.status_code != 200 for result in results):
+            await Response("backend_metrics_unavailable", status_code=503)(scope, receive, send)
+            return
+        body = b"\n".join(result.content for result in results if isinstance(result, httpx.Response))
+        await Response(
+            body,
+            media_type="text/plain",
+            headers={"Content-Type": "text/plain; version=0.0.4; charset=utf-8"},
+        )(scope, receive, send)
 
     async def process(
         self, request: Request, body: bytes, model: str, session: Session, writer: Writer
