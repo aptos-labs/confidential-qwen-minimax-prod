@@ -371,6 +371,74 @@ def cleaned(value: Any) -> Any:
     return value
 
 
+class UsageOnlyMeter:
+    """Hard gateway ceilings when billing admission is absent; no billing records."""
+
+    def __init__(self, outputs: set[str]) -> None:
+        self.outputs = outputs
+        self.inputs: dict[str, int] | None = None
+        self.text_tokens = 0
+        self.frames = 0
+        self.format: tuple[int, int, int] | None = None
+        self.audio_seen = False
+
+    def input_snapshot(self, response: dict[str, Any]) -> None:
+        metrics = response.get("metrics")
+        if not isinstance(metrics, dict):
+            raise GatewayError("meter_unavailable")
+        data = metrics.get("model_meter_v1")
+        names = {"total_input", "text_input", "image_input", "video_input", "audio_input"}
+        if (
+            not isinstance(data, dict)
+            or set(data) != names | {"schema", "status"}
+            or data.get("schema") != "qwen3-omni-input/v1"
+            or data.get("status") != "available"
+        ):
+            raise GatewayError("meter_unavailable")
+        counts = {name: integer(data[name], 0, INPUT_LIMIT) for name in names}
+        if counts["total_input"] != sum(counts[n] for n in names - {"total_input"}):
+            raise GatewayError("meter_unavailable")
+        if self.inputs is not None and self.inputs != counts:
+            raise GatewayError("meter_unavailable")
+        self.inputs = counts
+
+    def audio(self, encoded: Any) -> None:
+        if not isinstance(encoded, str):
+            raise GatewayError("meter_unavailable")
+        frames, rate, channels, width = wav_frames(encoded)
+        shape = rate, channels, width
+        if shape != (AUDIO_RATE, 1, 2) or (self.format is not None and self.format != shape):
+            raise GatewayError("meter_unavailable")
+        self.format = shape
+        self.frames += frames
+        self.audio_seen = True
+        if self.frames > AUDIO_RATE * 120:
+            raise GatewayError("output_limit")
+
+    def text(self, choice: dict[str, Any], visible: bool) -> None:
+        ids = choice.get("token_ids")
+        if ids is None:
+            if visible:
+                raise GatewayError("meter_unavailable")
+            return
+        if (
+            not isinstance(ids, list)
+            or (visible and not ids)
+            or any(type(v) is not int or v < 0 for v in ids)
+        ):
+            raise GatewayError("meter_unavailable")
+        self.text_tokens += len(ids)
+        if self.text_tokens > 4096:
+            raise GatewayError("output_limit")
+
+    def meter(self) -> dict[str, Any]:
+        raise GatewayError("billing_unavailable")
+
+    def ensure_complete(self) -> None:
+        if self.inputs is None or ("audio" in self.outputs and not self.audio_seen):
+            raise GatewayError("meter_unavailable")
+
+
 class QwenMeter:
     def __init__(self, maximum: dict[str, Any], outputs: set[str]) -> None:
         try:

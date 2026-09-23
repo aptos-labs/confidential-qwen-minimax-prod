@@ -17,7 +17,13 @@ from starlette.requests import ClientDisconnect, Request
 from starlette.responses import JSONResponse, Response
 from starlette.types import ASGIApp, Message, Receive, Scope, Send
 
-from .client import BillingClient, GatewayError, production_billing, strict_json
+from .client import (
+    _BILLING_ROUTE_ABSENT,
+    BillingClient,
+    GatewayError,
+    production_billing,
+    strict_json,
+)
 from .media import MeterError, mp4_duration
 from .protocol import (
     BODY_LIMIT,
@@ -26,6 +32,7 @@ from .protocol import (
     QWEN,
     VIDEO,
     QwenMeter,
+    UsageOnlyMeter,
     cleaned,
     normalize_chat,
     video_meter,
@@ -124,9 +131,12 @@ class Session:
         self.attempted = False
         self.finished = False
         self.last: dict[str, Any] | None = None
+        self.billing_disabled = False
         self.deadline = asyncio.get_running_loop().time() + 30
 
-    async def admit(self, model: str, inputs: list[str], outputs: list[str]) -> dict[str, Any]:
+    async def admit(
+        self, model: str, inputs: list[str], outputs: list[str]
+    ) -> dict[str, Any] | None:
         self.attempted = True
         result = await self.client.call(
             "admit",
@@ -138,6 +148,9 @@ class Session:
                 "output_modalities": outputs,
             },
         )
+        if result is _BILLING_ROUTE_ABSENT:
+            self.billing_disabled = True
+            return None
         try:
             remaining = (
                 datetime.fromisoformat(result["expires_at"]) - datetime.now(UTC)
@@ -156,7 +169,7 @@ class Session:
             raise GatewayError("billing_unavailable") from exc
 
     async def checkpoint(self, meter: dict[str, Any]) -> None:
-        if meter == self.last:
+        if self.billing_disabled or meter == self.last:
             return
         sequence = self.sequence + 1
         result = await self.client.call(
@@ -172,7 +185,7 @@ class Session:
         self.sequence, self.last = sequence, meter
 
     async def finish(self, reason: str) -> None:
-        if self.finished or not self.attempted:
+        if self.finished or not self.attempted or self.billing_disabled:
             return
         self.finished = True
 
@@ -435,9 +448,7 @@ class PaidGateway:
             except httpx.HTTPError as exc:
                 return exc
 
-        return list(
-            await asyncio.gather(*(fetch(base) for base in self.observability_targets))
-        )
+        return list(await asyncio.gather(*(fetch(base) for base in self.observability_targets)))
 
     async def health(self, scope: Scope, receive: Receive, send: Send) -> None:
         results = await self._backend_get("/health")
@@ -456,10 +467,15 @@ class PaidGateway:
 
     async def metrics(self, scope: Scope, receive: Receive, send: Send) -> None:
         results = await self._backend_get("/metrics")
-        if any(not isinstance(result, httpx.Response) or result.status_code != 200 for result in results):
+        if any(
+            not isinstance(result, httpx.Response) or result.status_code != 200
+            for result in results
+        ):
             await Response("backend_metrics_unavailable", status_code=503)(scope, receive, send)
             return
-        body = b"\n".join(result.content for result in results if isinstance(result, httpx.Response))
+        body = b"\n".join(
+            result.content for result in results if isinstance(result, httpx.Response)
+        )
         await Response(
             body,
             media_type="text/plain",
@@ -481,11 +497,14 @@ class PaidGateway:
                 except (TypeError, ValueError, KeyError) as exc:
                     raise GatewayError("invalid_request", 400) from exc
                 maximum = await session.admit(model, inputs, sorted(outputs))
-                meter = QwenMeter(maximum, outputs)
-                if any(meter.limits[f"{kind}_input"] < INPUT_LIMIT for kind in inputs):
-                    raise GatewayError("billing_unavailable")
-                if "text" in outputs and payload["max_tokens"] > meter.limits["text_output"]:
-                    raise GatewayError("invalid_request", 400)
+                if maximum is None:
+                    meter = UsageOnlyMeter(outputs)
+                else:
+                    meter = QwenMeter(maximum, outputs)
+                    if any(meter.limits[f"{kind}_input"] < INPUT_LIMIT for kind in inputs):
+                        raise GatewayError("billing_unavailable")
+                    if "text" in outputs and payload["max_tokens"] > meter.limits["text_output"]:
+                        raise GatewayError("invalid_request", 400)
                 include_usage = bool((original.get("stream_options") or {}).get("include_usage"))
                 async with asyncio.timeout_at(session.deadline):
                     async with self.upstream.stream(
@@ -532,7 +551,8 @@ class PaidGateway:
                             raise GatewayError("upstream_failed", 502)
                         data = await self.collect(response)
                     duration = mp4_duration(data)
-                    await session.checkpoint(video_meter(duration, maximum))
+                    if not session.billing_disabled:
+                        await session.checkpoint(video_meter(duration, maximum))
                     await session.finish("completed")
                     await writer.full(data, "video/mp4")
         except (
@@ -601,11 +621,13 @@ class PaidGateway:
         if not kept:
             raise GatewayError("meter_unavailable")
         meter.ensure_complete()
-        await session.checkpoint(meter.meter())
+        if not session.billing_disabled:
+            await session.checkpoint(meter.meter())
         await session.finish("completed")
         value["choices"] = kept
         value = cleaned(value)
-        value["billable_usage"] = meter.meter()
+        if not session.billing_disabled:
+            value["billable_usage"] = meter.meter()
         await writer.full(encode(value), "application/json")
 
     async def stream_chat(
@@ -686,7 +708,12 @@ class PaidGateway:
                 or meter.text_tokens - sent_tokens >= 8
                 or time.monotonic() - last_flush >= 0.1
             )
-            if should_flush and meter.inputs is not None and (meter.frames or meter.text_tokens):
+            if (
+                not session.billing_disabled
+                and should_flush
+                and meter.inputs is not None
+                and (meter.frames or meter.text_tokens)
+            ):
                 await session.checkpoint(meter.meter())
                 await writer.event(b"".join(pending))
                 pending, pending_bytes = [], 0
@@ -695,7 +722,8 @@ class PaidGateway:
         if not done:
             raise GatewayError("upstream_failed", 502)
         meter.ensure_complete()
-        await session.checkpoint(meter.meter())
+        if not session.billing_disabled:
+            await session.checkpoint(meter.meter())
         await session.finish("completed")
         if pending:
             await writer.event(b"".join(pending))

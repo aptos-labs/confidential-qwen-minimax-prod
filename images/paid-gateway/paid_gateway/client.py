@@ -17,6 +17,7 @@ import httpx
 
 BILLING_URL: Final = "https://api.inference.aptoslabs.com"
 REPORTER_ID: Final = "model-router"
+_BILLING_ROUTE_ABSENT: Final = object()
 
 
 def production_billing() -> BillingClient:
@@ -183,6 +184,8 @@ class BillingClient:
                     if not isinstance(result, dict):
                         raise GatewayError("billing_unavailable")
                     return result
+                if response.status_code == 404:
+                    return _BILLING_ROUTE_ABSENT
                 if response.status_code < 500:
                     status = (
                         response.status_code

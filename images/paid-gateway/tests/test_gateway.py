@@ -17,7 +17,7 @@ import pytest
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from paid_gateway.app import PaidGateway
-from paid_gateway.client import BillingClient, GatewayError
+from paid_gateway.client import _BILLING_ROUTE_ABSENT, BillingClient, GatewayError
 from paid_gateway.protocol import QWEN, normalize_chat
 from paid_gateway.video_request import validate_video
 
@@ -83,6 +83,8 @@ class FakeBilling:
 
     async def call(self, operation, value):
         self.calls.append((operation, copy.deepcopy(value)))
+        if self.fail == "absent" and operation == "admit":
+            return _BILLING_ROUTE_ABSENT
         if operation == self.fail:
             raise GatewayError("billing_rejected", 403)
         if operation == "admit":
@@ -177,6 +179,20 @@ def test_buffered_audio_is_acked_before_delivery_and_hidden_text_is_not_billed()
     asyncio.run(case())
 
 
+def test_usage_only_buffered_audio_skips_billing_records():
+    async def case():
+
+        result, billing, sent = await invoke(payload(), fail="absent")
+        assert result.status_code == 200 and len(sent) == 1
+        assert "hidden-thinker-output" not in result.text
+        assert "token_ids" not in result.text and "metrics" not in result.text
+        assert "billable_usage" not in result.json()
+        assert [op for op, _ in billing.calls] == ["admit"]
+        assert KEY not in result.text
+
+    asyncio.run(case())
+
+
 @pytest.mark.parametrize("failure", ["admit", "checkpoint"])
 def test_billing_failure_never_forwards_unconfirmed_audio(failure):
     async def case():
@@ -251,6 +267,32 @@ def test_streaming_audio_keeps_final_chunk_and_excludes_codec_tokens():
             == 24000
         )
         assert checkpoint["meter"]["meter"]["usage"]["tokens"]["text_output"] == 0
+
+    asyncio.run(case())
+
+
+def test_usage_only_streaming_skips_billing_checkpoints():
+    async def case():
+        response = sse(
+            [
+                {
+                    "model": QWEN,
+                    "modality": "audio",
+                    "metrics": metadata(),
+                    "choices": [
+                        {
+                            "delta": {"content": wav()},
+                            "token_ids": [1] * 50,
+                            "finish_reason": "stop",
+                        }
+                    ],
+                }
+            ]
+        )
+        result, billing, _ = await invoke(payload(True), response=response, fail="absent")
+        assert result.status_code == 200 and wav() in result.text
+        assert [op for op, _ in billing.calls] == ["admit"]
+        assert "billable_usage" not in result.text
 
     asyncio.run(case())
 
@@ -1115,5 +1157,95 @@ def test_review_valid_terminal_flushes_acknowledged_output_before_eof(reason):
         assert len(checkpoints) == 1
         assert checkpoints[0]["meter"]["meter"]["usage"]["tokens"]["text_output"] == 1
         assert billing.calls[-1][1]["reason"] == "cancelled"
+
+    asyncio.run(case())
+
+
+def test_billing_client_absent_route_returns_sentinel_without_retry():
+    async def case():
+        attempts = 0
+
+        def response(request):
+            nonlocal attempts
+            attempts += 1
+            return httpx.Response(404)
+
+        client = httpx.AsyncClient(transport=httpx.MockTransport(response))
+        billing = BillingClient("https://billing.test", "reporter", SECRET, client)
+        try:
+            result = await billing.call("admit", {"request_id": "fixture"})
+            assert result is _BILLING_ROUTE_ABSENT
+            assert attempts == 1
+        finally:
+            await billing.close()
+
+    asyncio.run(case())
+
+
+def test_billing_client_server_error_remains_fail_closed():
+    async def case():
+        attempts = 0
+
+        def response(request):
+            nonlocal attempts
+            attempts += 1
+            return httpx.Response(500)
+
+        client = httpx.AsyncClient(transport=httpx.MockTransport(response))
+        billing = BillingClient("https://billing.test", "reporter", SECRET, client)
+        try:
+            with pytest.raises(GatewayError, match="billing_unavailable"):
+                await billing.call("admit", {"request_id": "fixture"})
+            assert attempts == 3
+        finally:
+            await billing.close()
+
+    asyncio.run(case())
+
+
+def test_usage_only_video_skips_billing_and_preserves_video_response(monkeypatch):
+    async def case():
+        fields = [
+            ("model", "minimax-h3-fl2va"),
+            ("prompt", "fixture"),
+            ("extra_params", json.dumps({"task": "fl2va", "duration": 4})),
+        ]
+        raw = form(
+            fields,
+            [
+                ("input_references", b"\x89PNG\r\n\x1a\nfirst"),
+                ("input_references", b"\x89PNG\r\n\x1a\nlast"),
+            ],
+        )
+        billing = FakeBilling("absent")
+        sent = []
+
+        async def model(request):
+            sent.append(request)
+            return httpx.Response(200, headers={"content-type": "video/mp4"}, content=b"mp4")
+
+        upstream = httpx.AsyncClient(transport=httpx.MockTransport(model))
+        gateway = PaidGateway(downstream, billing, upstream)
+        monkeypatch.setattr("paid_gateway.app.mp4_duration", lambda data: Fraction(4, 1))
+        try:
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(gateway), base_url="https://gateway.test"
+            ) as client:
+                result = await client.post(
+                    "/v1/videos/sync",
+                    content=raw,
+                    headers={
+                        "Authorization": "Bearer " + KEY,
+                        "Content-Type": "multipart/form-data; boundary=fixture-boundary",
+                    },
+                )
+            assert result.status_code == 200
+            assert result.content == b"mp4"
+            assert [op for op, _ in billing.calls] == ["admit"]
+            assert len(sent) == 1
+        finally:
+            await upstream.aclose()
+
+    from fractions import Fraction
 
     asyncio.run(case())
