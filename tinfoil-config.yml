@@ -36,12 +36,17 @@ models:
   mpk: 146b75f36614f6c597c09c5f7b62acd0a99c4f5d21c31a590fbd6ca68d053acc_70530605056_3ac824a9-5ee0-5130-9f87-1b94ff497b11
 networks:
   models: {}
+  gateway-egress:
+    egress: allowlist
+    allow:
+    - api.inference.aptoslabs.com
 containers:
 - name: litellm
   image: ghcr.io/aptos-labs/confidential-qwen-minimax-paid-gateway@sha256:9de0c62233566f90b20df3644e54230ffb2bebf47051c15263e657f45aae70c4
   restart: always
   networks:
   - models
+  - gateway-egress
   secrets:
   - USAGE_REPORTER_SECRET
   healthcheck:

@@ -301,3 +301,18 @@ def test_tinfoil_runtime_matches_signed_extra_large_2d_v011_shape():
     assert document["gpus"] == 8
     assert len(document["models"]) == 2
     assert len(document["containers"]) == 3
+
+
+def test_gateway_has_explicit_egress_for_usage_reporter():
+    config = yaml.safe_load((ROOT / "tinfoil-config.yml").read_text())
+    assert config["networks"]["gateway-egress"] == {
+        "egress": "allowlist",
+        "allow": ["api.inference.aptoslabs.com"],
+    }
+    gateway = next(container for container in config["containers"] if container["name"] == "litellm")
+    assert gateway["networks"] == ["models", "gateway-egress"]
+    assert all(
+        "gateway-egress" not in container.get("networks", [])
+        for container in config["containers"]
+        if container["name"] != "litellm"
+    )
