@@ -48,6 +48,7 @@ audio track). The gateway forwards the body unchanged after validating it:
 rejects any request that tries to disable them. The guardrail models
 (`nvidia/Cosmos-1.0-Guardrail`, `google/siglip-so400m-patch14-384`,
 `Qwen/Qwen3Guard-Gen-0.6B`) load offline from the measured model volume.
+Guardrail-blocked requests return HTTP 400 `content_policy_violation` and are not billed.
 
 Staging on the production shape (2026-09-25): 720p/189 frames in about 230–260 s, 480p in
 about 75 s; Qwen latency was unaffected while Cosmos generated.

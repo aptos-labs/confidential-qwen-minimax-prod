@@ -1342,3 +1342,141 @@ def test_usage_only_video_skips_billing_and_preserves_video_response(monkeypatch
     from fractions import Fraction
 
     asyncio.run(case())
+
+
+GUARDRAIL_BODY = {
+    "error": {
+        "message": "Input was blocked by Cosmos3 guardrails",
+        "type": "BadRequestError",
+        "param": None,
+        "code": 400,
+    }
+}
+
+
+async def invoke_video(response, fail=None):
+    billing = FakeBilling(fail)
+    sent = []
+
+    async def model(request):
+        sent.append(request)
+        return response
+
+    upstream = httpx.AsyncClient(transport=httpx.MockTransport(model))
+    gateway = PaidGateway(downstream, billing, upstream)
+    try:
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(gateway), base_url="https://gateway.test"
+        ) as client:
+            result = await client.post(
+                "/v1/videos/sync",
+                content=form(cosmos_fields()),
+                headers={"Authorization": "Bearer " + KEY, "Content-Type": VIDEO_TYPE},
+            )
+        return result, billing, sent
+    finally:
+        await upstream.aclose()
+
+
+@pytest.mark.parametrize(
+    "message",
+    [
+        "Input was blocked by Cosmos3 guardrails",
+        "Output video was blocked by GUARDRAIL checks",
+    ],
+)
+def test_cosmos_guardrail_block_is_unbilled_content_policy_violation(message):
+    async def case():
+        body = copy.deepcopy(GUARDRAIL_BODY)
+        body["error"]["message"] = message
+        result, billing, sent = await invoke_video(httpx.Response(400, json=body))
+        assert len(sent) == 1
+        assert result.status_code == 400
+        error = result.json()["error"]
+        assert error["type"] == "invalid_request_error"
+        assert error["code"] == "content_policy_violation"
+        assert error["message"] == "Request was blocked by the model's safety guardrails."
+        assert message not in result.text and "BadRequestError" not in result.text
+        assert [op for op, _ in billing.calls] == ["admit", "settle"]
+        assert billing.calls[-1][1]["reason"] == "cancelled"
+
+    asyncio.run(case())
+
+
+def test_usage_only_cosmos_guardrail_block_records_nothing():
+    async def case():
+        result, billing, _ = await invoke_video(httpx.Response(400, json=GUARDRAIL_BODY), "absent")
+        assert result.status_code == 400
+        assert result.json()["error"]["code"] == "content_policy_violation"
+        assert [op for op, _ in billing.calls] == ["admit"]
+
+    asyncio.run(case())
+
+
+@pytest.mark.parametrize(
+    "response",
+    [
+        pytest.param(
+            httpx.Response(400, json={"error": {"message": "num_frames must be <= 189"}}),
+            id="400-other-message",
+        ),
+        pytest.param(httpx.Response(400, content=b"guardrails blocked"), id="400-non-json"),
+        pytest.param(httpx.Response(400, json=["guardrail"]), id="400-json-not-object"),
+        pytest.param(httpx.Response(400, json={"error": "guardrail"}), id="400-error-not-object"),
+        pytest.param(
+            httpx.Response(400, json={"error": {"message": ["guardrail"]}}),
+            id="400-message-not-string",
+        ),
+        pytest.param(
+            httpx.Response(400, json={"detail": "blocked by guardrails"}), id="400-no-error"
+        ),
+        pytest.param(
+            httpx.Response(
+                400,
+                json={
+                    "error": {"message": "Input was blocked by Cosmos3 guardrails"},
+                    "pad": "x" * (64 * 1024),
+                },
+            ),
+            id="400-oversize",
+        ),
+        pytest.param(
+            httpx.Response(
+                400,
+                content=b'{"error":{"message":"guardrail"},"error":{"message":"x"}}',
+            ),
+            id="400-duplicate-keys",
+        ),
+        pytest.param(httpx.Response(500, json=GUARDRAIL_BODY), id="500-guardrail-body"),
+        pytest.param(httpx.Response(500, content=b"internal error"), id="500"),
+        pytest.param(httpx.Response(422, json=GUARDRAIL_BODY), id="422-guardrail-body"),
+    ],
+)
+def test_cosmos_other_upstream_errors_remain_upstream_failed(response):
+    async def case():
+        result, billing, _ = await invoke_video(response)
+        assert result.status_code == 502
+        assert result.json()["error"] == {
+            "type": "inference_error",
+            "code": "upstream_failed",
+            "message": "upstream_failed",
+        }
+        assert "guardrail" not in result.text.lower()
+        assert [op for op, _ in billing.calls] == ["admit", "settle"]
+        assert billing.calls[-1][1]["reason"] == "cancelled"
+
+    asyncio.run(case())
+
+
+def test_qwen_upstream_guardrail_400_remains_upstream_failed():
+    async def case():
+        result, billing, _ = await invoke(
+            payload(), response=httpx.Response(400, json=GUARDRAIL_BODY)
+        )
+        assert result.status_code == 502
+        assert result.json()["error"]["code"] == "upstream_failed"
+        assert result.json()["error"]["type"] == "inference_error"
+        assert [op for op, _ in billing.calls] == ["admit", "settle"]
+        assert billing.calls[-1][1]["reason"] == "cancelled"
+
+    asyncio.run(case())

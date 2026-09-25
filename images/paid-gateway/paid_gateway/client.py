@@ -43,6 +43,7 @@ class GatewayError(Exception):
             "meter_unavailable",
             "upstream_failed",
             "output_limit",
+            "content_policy_violation",
         }
         if code not in allowed:
             raise ValueError("invalid gateway error code")
