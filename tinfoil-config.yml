@@ -42,7 +42,7 @@ networks:
     - api.inference.aptoslabs.com
 containers:
 - name: litellm
-  image: ghcr.io/aptos-labs/confidential-qwen-minimax-paid-gateway@sha256:cd496e26fce24a5cbdec4f592f9183fe687f314a95b94c9ae9897a117085028f
+  image: ghcr.io/aptos-labs/confidential-qwen-minimax-paid-gateway@sha256:8ebdcce6df6f09eaca67cc7ed81f771a9d69df71a815d4de368838027628b442
   restart: always
   networks:
   - models
