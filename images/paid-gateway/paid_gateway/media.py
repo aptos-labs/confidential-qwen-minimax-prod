@@ -12,7 +12,7 @@ AAC padding) never contributes to the result. A single full-length, unit-rate
 edit may remove a validated composition-time offset for B-frame delay; trimming,
 gaps, complex edits, rotations, external media, and unsupported tables fail closed.
 Movie-tick rounding is checked only for consistency, never used as the meter.
-Request-duration policy (4..15 seconds, plus encoder frame alignment) and WAV
+Request-duration policy (Cosmos3-Super: at most 189 frames at 24 fps) and WAV
 format consistency across streamed chunks belong to the caller.
 """
 

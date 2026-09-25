@@ -333,6 +333,16 @@ def test_mp4_max_samples_and_dimensions():
     reject_mp4(Movie(frames=4097, chunks=(4097,)).build())
 
 
+@pytest.mark.parametrize("width,height", [(832, 480), (1280, 720)])
+@pytest.mark.parametrize("frames", [1, 189])
+def test_mp4_cosmos3_super_output_shapes(width, height, frames):
+    movie = Movie(frames=frames, chunks=(frames,), width=width, height=height)
+    data = movie.build()
+    assert media.mp4_duration(data) == Fraction(frames, 24)
+    metadata = media.mp4_metadata(data)
+    assert (metadata.frames, metadata.width, metadata.height) == (frames, width, height)
+
+
 @pytest.mark.parametrize(
     "width,height", [(0, 768), (3073, 768), (768, 3073), (3072, 769), (1537, 1536)]
 )

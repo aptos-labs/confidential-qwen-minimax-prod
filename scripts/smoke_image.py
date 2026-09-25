@@ -65,8 +65,8 @@ with log.open('wb') as output:
    status,data=request('POST','/v1/chat/completions',body,headers)
    assert status==503 and json.loads(data)['error']['code']=='billing_unavailable',(status,data)
    boundary='smoke-boundary'
-   fields={'model':'minimax-h3-fl2va','prompt':'fixture','seconds':'4',
-           'aspect_ratio':'16:9','num_inference_steps':'2'}
+   fields={'model':'cosmos3-super','prompt':'fixture','size':'832x480','num_frames':'189',
+           'num_inference_steps':'2'}
    body=''.join('--'+boundary+'\r\nContent-Disposition: form-data; name="'
                 +k+'"\r\n\r\n'+v+'\r\n' for k,v in fields.items())+'--'+boundary+'--\r\n'
    headers={'Content-Type':'multipart/form-data; boundary='+boundary,

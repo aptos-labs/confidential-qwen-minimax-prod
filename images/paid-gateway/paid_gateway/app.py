@@ -302,11 +302,11 @@ class PaidGateway:
         self.limits = {QWEN: asyncio.Semaphore(4), VIDEO: asyncio.Semaphore(1)}
         self.targets = {
             QWEN: "http://vllm-omni-qwen:8000/v1/chat/completions",
-            VIDEO: "http://vllm-omni-minimax:8001/v1/videos/sync",
+            VIDEO: "http://vllm-omni-cosmos:8001/v1/videos/sync",
         }
         self.observability_targets = (
             "http://vllm-omni-qwen:8000",
-            "http://vllm-omni-minimax:8001",
+            "http://vllm-omni-cosmos:8001",
         )
 
     async def close(self) -> None:

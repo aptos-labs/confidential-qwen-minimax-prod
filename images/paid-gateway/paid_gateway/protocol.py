@@ -12,7 +12,7 @@ from .client import GatewayError, integer
 from .media import wav_frames
 
 QWEN = "qwen3-omni"
-VIDEO = "minimax-h3-fl2va"
+VIDEO = "cosmos3-super"
 INPUT_LIMIT = 131072
 AUDIO_RATE = 24000
 BODY_LIMIT = 64 * 1024 * 1024

@@ -422,49 +422,157 @@ def form(fields, files=()):
             + value.encode()
             + b"\r\n"
         )
-    for name, value in files:
+    for name, value, *rest in files:
+        media_type, filename = rest if rest else ("image/png", "frame.png")
         parts.append(
             marker
             + b'\r\nContent-Disposition: form-data; name="'
             + name.encode()
-            + b'"; filename="frame.png"\r\nContent-Type: image/png\r\n\r\n'
+            + b'"; filename="'
+            + filename.encode()
+            + b'"\r\nContent-Type: '
+            + media_type.encode()
+            + b"\r\n\r\n"
             + value
             + b"\r\n"
         )
     return b"".join(parts) + marker + b"--\r\n"
 
 
-def test_video_validates_uploads_without_rewriting_body():
-    fields = [
-        ("model", "minimax-h3-fl2va"),
-        ("prompt", "transition between frames"),
-        ("extra_params", '{"task":"fl2va","duration":4}'),
-        ("fps", "24"),
-    ]
-    body = form(
-        fields,
-        [
-            ("input_references", b"\x89PNG\r\n\x1a\nfirst"),
-            ("input_references", b"\x89PNG\r\n\x1a\nlast"),
-        ],
+VIDEO_TYPE = "multipart/form-data; boundary=fixture-boundary"
+PNG = b"\x89PNG\r\n\x1a\nfixture"
+JPEG = b"\xff\xd8\xff\xe0fixture"
+
+
+def cosmos_fields(**overrides):
+    fields = {
+        "model": "cosmos3-super",
+        "prompt": "a robot arm stacks blocks",
+        "size": "832x480",
+        "num_frames": "189",
+    }
+    fields.update(overrides)
+    return [(name, value) for name, value in fields.items() if value is not None]
+
+
+@pytest.mark.parametrize("size", ["832x480", "1280x720"])
+def test_cosmos_text_to_video_is_admitted(size):
+    fields = cosmos_fields(
+        size=size,
+        negative_prompt="blurry",
+        fps="24",
+        num_inference_steps="35",
+        guidance_scale="7.5",
+        flow_shift="5.0",
+        seed="-42",
+        max_sequence_length="512",
+        extra_params=json.dumps(
+            {"use_resolution_template": True, "use_duration_template": False, "guardrails": True}
+        ),
     )
+    assert validate_video(form(fields), VIDEO_TYPE) == ["text"]
+    assert validate_video(form(cosmos_fields(size=size, num_frames="1")), VIDEO_TYPE) == ["text"]
+
+
+@pytest.mark.parametrize(
+    "image,media_type,filename",
+    [(PNG, "image/png", "frame.png"), (JPEG, "image/jpeg", "frame.jpg")],
+)
+def test_cosmos_image_to_video_accepts_one_reference(image, media_type, filename):
+    body = form(cosmos_fields(), [("input_reference", image, media_type, filename)])
+    assert validate_video(body, VIDEO_TYPE) == ["text", "image"]
+
+
+@pytest.mark.parametrize(
+    "fields,files",
+    [
+        pytest.param(cosmos_fields(size=None), [], id="missing-size"),
+        pytest.param(cosmos_fields(size="1920x1080"), [], id="size-1920x1080"),
+        pytest.param(cosmos_fields(size="640x480"), [], id="size-640x480"),
+        pytest.param(cosmos_fields(num_frames="190"), [], id="num-frames-190"),
+        pytest.param(cosmos_fields(num_frames="0"), [], id="num-frames-0"),
+        pytest.param(cosmos_fields(num_frames=None), [], id="missing-num-frames"),
+        pytest.param(cosmos_fields(num_frames=" 189"), [], id="num-frames-whitespace"),
+        pytest.param(
+            cosmos_fields(num_frames="\u0661\u0668\u0669"), [], id="num-frames-nonascii"
+        ),
+        pytest.param(cosmos_fields(fps="30"), [], id="fps-30"),
+        pytest.param(cosmos_fields(num_inference_steps="51"), [], id="steps-51"),
+        pytest.param(cosmos_fields(guidance_scale="nan"), [], id="guidance-nan"),
+        pytest.param(cosmos_fields(seed=str(2**63)), [], id="seed-overflow"),
+        pytest.param(cosmos_fields(max_sequence_length="4097"), [], id="max-seq-4097"),
+        pytest.param(cosmos_fields(prompt=" "), [], id="blank-prompt"),
+        pytest.param(cosmos_fields(prompt=None), [], id="missing-prompt"),
+        pytest.param(
+            cosmos_fields(extra_params='{"guardrails":false}'), [], id="guardrails-false"
+        ),
+        pytest.param(
+            cosmos_fields(extra_params='{"guardrails":"false"}'), [], id="guardrails-string"
+        ),
+        pytest.param(cosmos_fields(extra_params='{"guardrails":0}'), [], id="guardrails-zero"),
+        pytest.param(
+            cosmos_fields(extra_params='{"guardrails":null}'), [], id="guardrails-null"
+        ),
+        pytest.param(
+            cosmos_fields(extra_params='{"guardrails":true,"guardrails":false}'),
+            [],
+            id="guardrails-duplicate",
+        ),
+        pytest.param(
+            cosmos_fields(extra_params='{"use_resolution_template":1}'),
+            [],
+            id="template-not-bool",
+        ),
+        pytest.param(cosmos_fields(extra_params='{"task":"i2v"}'), [], id="unknown-extra-key"),
+        pytest.param(cosmos_fields(extra_params="[]"), [], id="extra-not-object"),
+        pytest.param(
+            cosmos_fields(),
+            [("input_reference", PNG), ("input_reference", PNG)],
+            id="two-files",
+        ),
+        pytest.param(cosmos_fields(), [("input_references", PNG)], id="input-references"),
+        pytest.param(cosmos_fields(), [("input_reference", b"")], id="empty-file"),
+        pytest.param(
+            cosmos_fields(), [("input_reference", b"GIF89a", "image/gif", "a.gif")], id="gif"
+        ),
+        pytest.param(
+            cosmos_fields(), [("input_reference", b"not an image")], id="bad-png-magic"
+        ),
+        pytest.param(
+            cosmos_fields(),
+            [("input_reference", PNG, "image/jpeg", "frame.jpg")],
+            id="png-bytes-as-jpeg",
+        ),
+        pytest.param(
+            cosmos_fields(), [("input_reference", PNG, "image/png", "../x.png")], id="traversal"
+        ),
+        pytest.param(cosmos_fields(seconds="4"), [], id="unknown-field-seconds"),
+        pytest.param(cosmos_fields(width="832"), [], id="unknown-field-width"),
+        pytest.param(cosmos_fields(model="qwen3-omni"), [], id="wrong-model"),
+        pytest.param(cosmos_fields(model=None), [], id="missing-model"),
+    ],
+)
+def test_cosmos_video_rejections(fields, files):
+    with pytest.raises(GatewayError) as error:
+        validate_video(form(fields, files), VIDEO_TYPE)
+    assert (error.value.code, error.value.status) == ("invalid_request", 400)
+
+
+def test_video_validates_uploads_without_rewriting_body():
+    fields = cosmos_fields(size="1280x720", fps="24", extra_params='{"guardrails":true}')
+    body = form(fields, [("input_reference", PNG)])
     original = bytes(body)
-    validate_video(body, "multipart/form-data; boundary=fixture-boundary")
+    assert validate_video(body, VIDEO_TYPE) == ["text", "image"]
     assert body == original
     for extra in [
         ("priority", "1"),
-        ("num_inference_steps", "1"),
         ("num_inference_steps", "1000000"),
-        ("aspect_ratio", "1000000:1"),
-        ("aspect_ratio", "5:1"),
-        ("aspect_ratio", "1:0"),
-        ("aspect_ratio", "nan:1"),
+        ("aspect_ratio", "16:9"),
         ("image_reference", '"http://internal/"'),
+        ("size", "832x480"),
     ]:
         with pytest.raises(GatewayError):
-            validate_video(
-                form([*fields, extra]), "multipart/form-data; boundary=fixture-boundary"
-            )
+            validate_video(form([*fields, extra]), VIDEO_TYPE)
 
 
 # Regression coverage exercises the real ASGI boundary, not only meter helpers.
@@ -1012,24 +1120,16 @@ def test_review_unlabelled_mixed_output_fails_closed():
 
 
 @pytest.mark.parametrize(
-    "task,count,expected",
+    "files,expected",
     [
-        ("t2va", 0, ["text"]),
-        ("i2va", 1, ["text", "image"]),
-        ("fl2va", 2, ["text", "image"]),
+        ([], ["text"]),
+        ([("input_reference", PNG)], ["text", "image"]),
+        ([("input_reference", JPEG, "image/jpeg", "frame.jpg")], ["text", "image"]),
     ],
 )
-def test_review_video_admission_describes_actual_inputs(task, count, expected):
+def test_review_video_admission_describes_actual_inputs(files, expected):
     async def case():
-        fields = [
-            ("model", "minimax-h3-fl2va"),
-            ("prompt", "fixture"),
-            ("extra_params", json.dumps({"task": task, "duration": 4})),
-        ]
-        files = [
-            ("input_reference" if count == 1 else "input_references", b"\x89PNG\r\n\x1a\nfixture")
-            for _ in range(count)
-        ]
+        fields = cosmos_fields(extra_params='{"guardrails":true}')
         raw = form(fields, files)
         billing = FakeBilling("admit")
         sent = []
@@ -1205,18 +1305,8 @@ def test_billing_client_server_error_remains_fail_closed():
 
 def test_usage_only_video_skips_billing_and_preserves_video_response(monkeypatch):
     async def case():
-        fields = [
-            ("model", "minimax-h3-fl2va"),
-            ("prompt", "fixture"),
-            ("extra_params", json.dumps({"task": "fl2va", "duration": 4})),
-        ]
-        raw = form(
-            fields,
-            [
-                ("input_references", b"\x89PNG\r\n\x1a\nfirst"),
-                ("input_references", b"\x89PNG\r\n\x1a\nlast"),
-            ],
-        )
+        fields = cosmos_fields(size="1280x720", fps="24")
+        raw = form(fields, [("input_reference", JPEG, "image/jpeg", "frame.jpg")])
         billing = FakeBilling("absent")
         sent = []
 
@@ -1226,7 +1316,7 @@ def test_usage_only_video_skips_billing_and_preserves_video_response(monkeypatch
 
         upstream = httpx.AsyncClient(transport=httpx.MockTransport(model))
         gateway = PaidGateway(downstream, billing, upstream)
-        monkeypatch.setattr("paid_gateway.app.mp4_duration", lambda data: Fraction(4, 1))
+        monkeypatch.setattr("paid_gateway.app.mp4_duration", lambda data: Fraction(189, 24))
         try:
             async with httpx.AsyncClient(
                 transport=httpx.ASGITransport(gateway), base_url="https://gateway.test"
@@ -1243,6 +1333,9 @@ def test_usage_only_video_skips_billing_and_preserves_video_response(monkeypatch
             assert result.content == b"mp4"
             assert [op for op, _ in billing.calls] == ["admit"]
             assert len(sent) == 1
+            assert str(sent[0].url) == "http://vllm-omni-cosmos:8001/v1/videos/sync"
+            assert sent[0].content == raw
+            assert sent[0].headers["content-type"] == VIDEO_TYPE
         finally:
             await upstream.aclose()
 
