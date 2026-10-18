@@ -1,4 +1,4 @@
-# Confidential Qwen3-Omni + Cosmos3-Super production runtime
+# Confidential Qwen3-Omni + MiniMax-H3 production runtime
 
 This repository is the public, signed Tinfoil release provenance for the production
 dual-model confidential-inference CVM on `host0.inference.aptoslabs.com`:
@@ -6,61 +6,40 @@ dual-model confidential-inference CVM on `host0.inference.aptoslabs.com`:
 | Model ID | Model | Container | GPUs |
 |---|---|---|---|
 | `qwen3-omni` | Qwen3-Omni-30B-A3B-Instruct (chat/omni) | `vllm-omni-qwen:8000` | 4–7 |
-| `cosmos3-super` | NVIDIA Cosmos3-Super (video generation) | `vllm-omni-cosmos:8001` | 0–3 |
+| `minimax-h3-fl2va` | MiniMax-H3 FL2VA (synchronous video) | `vllm-omni-minimax:8001` | 0–3 |
 
-This repository was renamed from `aptos-labs/confidential-qwen-minimax-prod`. Releases up to
-`v0.0.12` served MiniMax-H3 FL2VA as `minimax-h3-fl2va`; `cosmos3-super` replaces it from
-`v0.0.13`. Qwen's image, model pack and command are unchanged. The GHCR packages keep their
-original `confidential-qwen-minimax-*` names.
+The repository name `aptos-labs/confidential-qwen-minimax-prod` was restored for this
+deployment. Releases through `v0.0.14` remain in
+`aptos-labs/confidential-qwen-minimax-prod-archive`: `v0.0.12` is the last signed MiniMax
+runtime, and `v0.0.13`–`v0.0.14` replaced it with Cosmos3-Super. This repository's next
+release is a new tag. Do not reuse an archived tag.
 
 ## What is attested
 
-`tinfoil-config.yml` is the exact measured runtime exported from the production CVM
-specification (`cvmctl export-runtime -f vm-qwen-cosmos-prod.yml`, kept in
-`aptos-labs/atlas` under `rust/crates/cvmctl/vmconfig/`). It pins both model packs, the paid
-gateway, Qwen and vLLM-Omni image digests, resource allocation, and all command lines.
+`tinfoil-config.yml` is the exact measured runtime the CVM host agent materializes for the
+fleet object. It preserves the image digests, model-pack references, GPU split, network
+policy, and API surface of archived release `v0.0.12`, in the canonical YAML order emitted
+after the fleet API's JSON round trip. Its SHA-256 is
+`adf7632800b140e29eab2f48efca224ceb9a6b6effda0e45b50f08b76b3c9a5a`.
 
-A mandatory paid gateway fronts both models. It admits requests through CCS before calling a
-model server, validates output meters, and persists checkpoints before releasing output, with
-no free fallback. Video is metered as `generated_video_seconds` (at most 15 s per request).
+A paid gateway fronts both models. It admits requests through CCS before calling a model
+server. Qwen is a chat/audio model. MiniMax is a synchronous video endpoint,
+`POST /v1/videos/sync`, and returns `video/mp4`.
 
 The CVM uses Tinfoil's signed `extra_large_2d` hardware profile
 ([`tinfoilsh/hardware-measurements`](https://github.com/tinfoilsh/hardware-measurements)):
 32 vCPUs, 512 GiB RAM, eight H200s with four NVSwitch ports, and five disks (root, measured
-config, external config and two model volumes). Cosmos3-Super and its guardrail models share
-one model volume.
-
-## Cosmos3-Super video API
-
-`POST /v1/videos/sync` with `multipart/form-data`, returning `video/mp4` (H.264, 24 fps, no
-audio track). The gateway forwards the body unchanged after validating it:
-
-- `model` = `cosmos3-super`; `prompt` required; optional `negative_prompt`.
-- `size` required: `832x480` or `1280x720`.
-- `num_frames` required: 1–189 (at most 7.875 s at 24 fps); `fps`, if sent, must be `24`.
-- Optional `num_inference_steps` (1–50), `guidance_scale` and `flow_shift` (0–32), `seed`,
-  `max_sequence_length` (1–4096).
-- Image-to-video: at most one `input_reference` file, PNG or JPEG.
-- Optional `extra_params` JSON with `use_resolution_template` / `use_duration_template`
-  booleans and `guardrails`, which may only be `true`.
-
-**Guardrails are always on.** The server runs without `--no-guardrails`, and the gateway
-rejects any request that tries to disable them. The guardrail models
-(`nvidia/Cosmos-1.0-Guardrail`, `google/siglip-so400m-patch14-384`,
-`Qwen/Qwen3Guard-Gen-0.6B`) load offline from the measured model volume.
-Guardrail-blocked requests return HTTP 400 `content_policy_violation` and are not billed.
-
-Staging on the production shape (2026-09-25): 720p/189 frames in about 230–260 s, 480p in
-about 75 s; Qwen latency was unaffected while Cosmos generated.
+config, external config, and two model volumes).
 
 ## Sources
 
-- `images/paid-gateway/` contains the mandatory gateway, its baked LiteLLM config,
-  entrypoint, and offline tests. Test dependencies stay in the Dockerfile's `test` stage.
+- `images/paid-gateway/` contains the gateway, its baked LiteLLM config, entrypoint, and
+  offline tests.
 - `images/qwen-metered/` installs the hash-checked vLLM-Omni meter patch at image build
-  time. Production continues to pin the already-attested
-  `ghcr.io/aptos-labs/confidential-qwen-minimax-qwen-metered` digest unless a rebuilt image
-  is separately verified.
+  time. This release pins the already-published
+  `ghcr.io/aptos-labs/confidential-qwen-minimax-paid-gateway` and
+  `ghcr.io/aptos-labs/confidential-qwen-minimax-qwen-metered` digests. A rebuilt image
+  requires its own verification and a new runtime release.
 
 ## Image publication and verification
 
@@ -78,8 +57,8 @@ about 75 s; Qwen latency was unaffected while Cosmos generated.
 
    ```bash
    gh attestation verify "oci://$IMAGE_REF" \
-     --repo aptos-labs/confidential-qwen-cosmos-prod \
-     --signer-workflow aptos-labs/confidential-qwen-cosmos-prod/.github/workflows/publish-runtime-images.yml \
+     --repo aptos-labs/confidential-qwen-minimax-prod \
+     --signer-workflow aptos-labs/confidential-qwen-minimax-prod/.github/workflows/publish-runtime-images.yml \
      --source-digest "$SOURCE_SHA" --signer-digest "$SOURCE_SHA"
    ```
 
@@ -87,22 +66,21 @@ Image publication never dispatches a Tinfoil runtime release or deploys a VM.
 
 ## Runtime release process
 
-1. Update the production `cvmctl` spec with the verified image digests.
-2. Export its exact measured runtime:
+1. Export the exact runtime materialized for the fleet CVM:
 
    ```bash
-   cvmctl export-runtime -f vm-qwen-cosmos-prod.yml > tinfoil-config.yml
+   cvmctl export-runtime -f qwen-minimax.yaml > tinfoil-config.yml
    ```
 
-3. Review and commit the generated `tinfoil-config.yml`.
-4. Run the **Tinfoil Release** workflow with a new, unused immutable tag. Never reuse a tag.
-5. Deploy that exact production specification with its metadata repository and tag set to
-   this repository and release.
+2. Review and commit the generated `tinfoil-config.yml`.
+3. Run the **Tinfoil Release** workflow with a new, unused immutable tag. Never reuse a tag.
+4. Set the fleet object's metadata repository and tag to this repository and release, then
+   start it.
 
 Any runtime change (CPU/RAM, a model pack, an image digest, or vLLM arguments) requires a new
-release before deployment. Before stopping a running VM, populate the protected host-side
-copy's secret slots and verify that its exported runtime hash equals the reviewed release.
-Never apply the public template's empty secret placeholders.
+release before deployment. Before stopping a running VM, verify that its exported runtime
+hash equals the reviewed release. The certificate token and usage secret stay in the
+protected external configuration.
 
 ## Security boundaries
 
