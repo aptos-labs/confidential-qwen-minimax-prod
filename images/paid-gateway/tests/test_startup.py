@@ -89,7 +89,7 @@ def test_unauthenticated_get_observability_paths_pass_through(monkeypatch):
     assert gateway.billing.client.is_closed and gateway.upstream.is_closed
 
 
-@pytest.mark.parametrize("model", ["qwen3-omni", "cosmos3-super"])
+@pytest.mark.parametrize("model", ["qwen3-omni", "minimax-h3-fl2va"])
 def test_both_production_models_require_admission_before_upstream(monkeypatch, model):
     from paid_gateway.client import BillingClient
 
@@ -116,7 +116,7 @@ def test_both_production_models_require_admission_before_upstream(monkeypatch, m
     monkeypatch.setattr("paid_gateway.app.production_billing", billing)
     app = FastAPI()
     gateway = install(app)
-    assert gateway.allowed_models == {"qwen3-omni", "cosmos3-super"}
+    assert gateway.allowed_models == {"qwen3-omni", "minimax-h3-fl2va"}
     asyncio.run(gateway.upstream.aclose())
     gateway.upstream = httpx.AsyncClient(transport=httpx.MockTransport(upstream_forbidden))
     with TestClient(app) as client:
@@ -134,8 +134,7 @@ def test_both_production_models_require_admission_before_upstream(monkeypatch, m
                 files=[
                     ("model", (None, model)),
                     ("prompt", (None, "a cube")),
-                    ("size", (None, "832x480")),
-                    ("num_frames", (None, "189")),
+                    ("seconds", (None, "4")),
                 ],
             )
         assert response.status_code == 403

@@ -1,52 +1,14 @@
-"""Validate bounded native Cosmos3-Super form fields without rewriting multipart bytes.
-
-The gateway forwards the caller's exact ``multipart/form-data`` body to vLLM-Omni's
-``/v1/videos/sync`` endpoint for ``cosmos3-super``; this module only admits or
-rejects it. Accepted text fields are ``model``, ``prompt``, ``negative_prompt``,
-``size`` (required, exactly ``832x480`` or ``1280x720``), ``num_frames`` (required,
-1..189), ``fps`` (24 only), ``num_inference_steps``, ``guidance_scale``,
-``flow_shift``, ``seed``, ``max_sequence_length`` and ``extra_params``.
-``extra_params`` is a strict JSON object limited to the two template booleans and
-``guardrails``, which may only restate ``true``: guardrails are never disabled per
-request. At most one PNG/JPEG ``input_reference`` file enables image-to-video.
-Every other field, file part, or value fails closed.
-"""
+"""Validate bounded native MiniMax form fields without rewriting multipart bytes."""
 
 from __future__ import annotations
 
 import math
-import re
 from email import policy
 from email.parser import BytesHeaderParser
 from typing import Any
 
 from .client import GatewayError, strict_json
 from .protocol import VIDEO
-
-SIZES = frozenset({"832x480", "1280x720"})
-MAX_FRAMES = 189
-FPS = 24
-EXTRA_PARAMS = frozenset({"use_resolution_template", "use_duration_template", "guardrails"})
-FIELDS = frozenset(
-    {
-        "model",
-        "prompt",
-        "negative_prompt",
-        "size",
-        "num_frames",
-        "fps",
-        "num_inference_steps",
-        "guidance_scale",
-        "flow_shift",
-        "seed",
-        "max_sequence_length",
-        "extra_params",
-    }
-)
-# Plain ASCII decimals only: no whitespace, '+', '_', or non-ASCII digits that
-# Python's int()/float() would silently accept but the model server might not.
-_WHOLE = re.compile(r"-?[0-9]{1,20}")
-_DECIMAL = re.compile(r"-?[0-9]{1,20}(?:\.[0-9]{1,20})?(?:[eE]-?[0-9]{1,3})?")
 
 
 def invalid() -> None:
@@ -55,7 +17,7 @@ def invalid() -> None:
 
 def number(value: Any, low: float, high: float, *, whole: bool = False) -> int | float:
     try:
-        if not isinstance(value, str) or not (_WHOLE if whole else _DECIMAL).fullmatch(value):
+        if isinstance(value, bool):
             invalid()
         parsed = int(value) if whole else float(value)
         if not math.isfinite(parsed) or not low <= parsed <= high:
@@ -112,8 +74,11 @@ def validate_video(body: bytes, content_type: str) -> list[str]:
             if not isinstance(name, str) or len(name) > 128:
                 invalid()
             if filename is not None:
-                # Cosmos3-Super conditions on at most one reference image.
-                if name != "input_reference" or files or not data:
+                if (
+                    name not in {"input_reference", "input_references"}
+                    or len(files) >= 2
+                    or not data
+                ):
                     invalid()
                 if (
                     len(filename) > 128
@@ -135,36 +100,97 @@ def validate_video(body: bytes, content_type: str) -> list[str]:
             if name in fields or len(data) > 65536:
                 invalid()
             fields[name] = data.decode("utf-8")
-        if set(fields) - FIELDS or fields.get("model") != VIDEO:
+        allowed = {
+            "model",
+            "prompt",
+            "width",
+            "height",
+            "size",
+            "seconds",
+            "num_frames",
+            "fps",
+            "aspect_ratio",
+            "short_edge",
+            "num_inference_steps",
+            "flow_shift",
+            "guidance_scale",
+            "guidance_scale_2",
+            "true_cfg_scale",
+            "seed",
+            "negative_prompt",
+            "num_outputs_per_prompt",
+            "generate_sound",
+            "extra_params",
+        }
+        if set(fields) - allowed or fields.get("model") != VIDEO or not fields.get("prompt"):
             invalid()
-        if not fields.get("prompt", "").strip():
+        if files.count("input_reference") > 1 or (
+            "input_reference" in files and "input_references" in files
+        ):
             invalid()
-        if fields.get("size") not in SIZES:
+        if (
+            "num_outputs_per_prompt" in fields
+            and number(fields["num_outputs_per_prompt"], 1, 1, whole=True) != 1
+        ):
             invalid()
-        if "num_frames" not in fields:
-            invalid()
-        number(fields["num_frames"], 1, MAX_FRAMES, whole=True)
         if "fps" in fields:
-            number(fields["fps"], FPS, FPS, whole=True)
+            number(fields["fps"], 24, 24, whole=True)
+        if "num_frames" in fields:
+            number(fields["num_frames"], 96, 360, whole=True)
+        if "seconds" in fields:
+            number(fields["seconds"], 4, 15, whole=True)
         if "num_inference_steps" in fields:
-            number(fields["num_inference_steps"], 1, 50, whole=True)
-        for key in ("guidance_scale", "flow_shift"):
-            if key in fields:
-                number(fields[key], 0, 32)
+            number(fields["num_inference_steps"], 2, 128, whole=True)
         if "seed" in fields:
             number(fields["seed"], -(2**63), 2**63 - 1, whole=True)
-        if "max_sequence_length" in fields:
-            number(fields["max_sequence_length"], 1, 4096, whole=True)
+        for key in ("flow_shift", "guidance_scale", "guidance_scale_2", "true_cfg_scale"):
+            if key in fields:
+                number(fields[key], 0, 32)
+        if "short_edge" in fields:
+            number(fields["short_edge"], 768, 768, whole=True)
+        if "aspect_ratio" in fields:
+            ratio = fields["aspect_ratio"]
+            if len(ratio) > 32 or ratio.count(":") != 1:
+                invalid()
+            left, right = ratio.split(":")
+            numerator = number(left, 1, 4096, whole=True)
+            denominator = number(right, 1, 4096, whole=True)
+            if max(numerator, denominator) > 4 * min(numerator, denominator):
+                invalid()
+        width, height = fields.get("width"), fields.get("height")
+        if "size" in fields:
+            if width or height or fields["size"].count("x") != 1:
+                invalid()
+            width, height = fields["size"].split("x")
+        if (width is None) != (height is None):
+            invalid()
+        if width is not None and height is not None:
+            w, h = number(width, 32, 3072, whole=True), number(height, 32, 3072, whole=True)
+            if w * h > 3072 * 768 or max(w, h) > 4 * min(w, h):
+                invalid()
+        if "generate_sound" in fields and fields["generate_sound"].lower() not in {
+            "true",
+            "false",
+            "1",
+            "0",
+        }:
+            invalid()
         if "extra_params" in fields:
             extra = strict_json(fields["extra_params"])
-            if not isinstance(extra, dict) or set(extra) - EXTRA_PARAMS:
+            if not isinstance(extra, dict) or set(extra) - {
+                "task",
+                "duration",
+                "duration_seconds",
+                "audio_flow_shift",
+            }:
                 invalid()
-            for key in ("use_resolution_template", "use_duration_template"):
-                if key in extra and type(extra[key]) is not bool:
-                    invalid()
-            # Guardrails are always on; a request may only restate that, never disable it.
-            if "guardrails" in extra and extra["guardrails"] is not True:
+            if "task" in extra and extra["task"] not in {"t2va", "fl2va", "i2va"}:
                 invalid()
+            for key in ("duration", "duration_seconds"):
+                if key in extra:
+                    number(extra[key], 4, 15)
+            if "audio_flow_shift" in extra:
+                number(extra["audio_flow_shift"], 0, 32)
     except (UnicodeError, TypeError, ValueError, IndexError) as exc:
         raise GatewayError("invalid_request", 400) from exc
     return ["text", "image"] if files else ["text"]

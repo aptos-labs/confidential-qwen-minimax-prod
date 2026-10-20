@@ -43,8 +43,7 @@ LOG = logging.getLogger(__name__)
 CHAT_PATH = "/v1/chat/completions"
 VIDEO_PATH = "/v1/videos/sync"
 MAX_EVENT = 4 * 1024 * 1024
-GUARDRAIL_ERROR_LIMIT = 64 * 1024
-CONTENT_POLICY_MESSAGE = "Request was blocked by the model's safety guardrails."
+GENERATION_TIMEOUT_SECONDS = 1800
 PRODUCTION_MODELS: Final = frozenset({QWEN, VIDEO})
 
 
@@ -152,6 +151,7 @@ class Session:
         )
         if result is _BILLING_ROUTE_ABSENT:
             self.billing_disabled = True
+            self.deadline = asyncio.get_running_loop().time() + GENERATION_TIMEOUT_SECONDS
             return None
         try:
             remaining = (
@@ -245,18 +245,7 @@ class Writer:
         )
 
     async def error(self, error: GatewayError) -> None:
-        if error.code == "content_policy_violation":
-            value = {
-                "error": {
-                    "type": "invalid_request_error",
-                    "code": error.code,
-                    "message": CONTENT_POLICY_MESSAGE,
-                }
-            }
-        else:
-            value = {
-                "error": {"type": "inference_error", "code": error.code, "message": error.code}
-            }
+        value = {"error": {"type": "inference_error", "code": error.code, "message": error.code}}
         if self.started:
             await self.event(b"data: " + encode(value) + b"\n\n")
             await self.end()
@@ -315,11 +304,11 @@ class PaidGateway:
         self.limits = {QWEN: asyncio.Semaphore(4), VIDEO: asyncio.Semaphore(1)}
         self.targets = {
             QWEN: "http://vllm-omni-qwen:8000/v1/chat/completions",
-            VIDEO: "http://vllm-omni-cosmos:8001/v1/videos/sync",
+            VIDEO: "http://vllm-omni-minimax:8001/v1/videos/sync",
         }
         self.observability_targets = (
             "http://vllm-omni-qwen:8000",
-            "http://vllm-omni-cosmos:8001",
+            "http://vllm-omni-minimax:8001",
         )
 
     async def close(self) -> None:
@@ -555,8 +544,6 @@ class PaidGateway:
                             "Accept-Encoding": "identity",
                         },
                     ) as response:
-                        if response.status_code == 400 and await self.guardrail_blocked(response):
-                            raise GatewayError("content_policy_violation", 400)
                         if (
                             response.status_code != 200
                             or response.headers.get("content-encoding", "identity")
@@ -591,23 +578,6 @@ class PaidGateway:
             await writer.error(error)
         finally:
             await session.finish("cancelled")
-
-    async def guardrail_blocked(self, response: httpx.Response) -> bool:
-        """True only for a bounded, well-formed Cosmos guardrail rejection body."""
-        if response.headers.get("content-encoding", "identity") not in {"", "identity"}:
-            return False
-        data = bytearray()
-        async for chunk in response.aiter_bytes(chunk_size=16384):
-            if len(data) + len(chunk) > GUARDRAIL_ERROR_LIMIT:
-                return False
-            data.extend(chunk)
-        try:
-            value = strict_json(bytes(data))
-        except GatewayError:
-            return False
-        error = value.get("error") if isinstance(value, dict) else None
-        message = error.get("message") if isinstance(error, dict) else None
-        return isinstance(message, str) and "guardrail" in message.lower()
 
     async def collect(self, response: httpx.Response) -> bytes:
         data = bytearray()
