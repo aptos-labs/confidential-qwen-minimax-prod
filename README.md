@@ -51,21 +51,38 @@ config, external config, and two model volumes).
 1. Review and merge the source PR, inspecting every review thread. PR CI runs policy/script
    tests, both Dockerfile `test` targets, and final-runtime smoke checks with all
    capabilities dropped, read-only roots, and no network.
-2. Dispatch **Publish runtime images** on the reviewed `main` commit, passing its full
-   40-character hash as `source_sha`.
-3. Record the workflow's build-output digests for:
-   - `ghcr.io/aptos-labs/confidential-qwen-minimax-paid-gateway`
-   - `ghcr.io/aptos-labs/confidential-qwen-minimax-qwen-metered`
-
-   Both packages are already public, so new versions need no visibility change.
-4. Verify each image's provenance, for example:
+2. Publish the gateway to public GAR using Cloud Build in `aptos-cloudbuild`:
 
    ```bash
-   gh attestation verify "oci://$IMAGE_REF" \
-     --repo aptos-labs/confidential-qwen-minimax-prod \
-     --signer-workflow aptos-labs/confidential-qwen-minimax-prod/.github/workflows/publish-runtime-images.yml \
-     --source-digest "$SOURCE_SHA" --signer-digest "$SOURCE_SHA"
+   SOURCE_SHA=$(git rev-parse HEAD)
+   git diff --exit-code
+   git merge-base --is-ancestor "$SOURCE_SHA" origin/main
+   git archive --format=tar.gz --output=/tmp/minimax-gateway-source.tar.gz "$SOURCE_SHA"
+   gcloud builds submit /tmp/minimax-gateway-source.tar.gz \
+     --project=aptos-cloudbuild --config=cloudbuild-gateway.yaml \
+     --substitutions="_SOURCE_SHA=$SOURCE_SHA"
    ```
+
+   `cloudbuild-gateway.yaml` runs the Dockerfile tests and isolated runtime smoke,
+   publishes to
+   `us-docker.pkg.dev/aptos-registry/ccs-images-public/confidential-qwen-minimax-paid-gateway`,
+   then anonymously pulls and smokes the exact published digest. It uses the existing
+   CCS builder service account and requires Cloud Build provenance verification.
+   The source archive contains only committed repository files. Credentials and fleet
+   external configuration must never be included in the build context.
+3. Record the successful build ID, source commit, and resulting digest. Inspect the
+   build's `sourceProvenance` and `results.images`, and the registry provenance:
+
+   ```bash
+   gcloud builds describe "$BUILD_ID" --project=aptos-cloudbuild
+   gcloud artifacts docker images describe "$IMAGE_REF" --show-provenance \
+     --project=aptos-registry
+   ```
+
+   Require the successful build's source archive, OCI revision label, and image digest
+   to match the reviewed commit and release pin. Keep the deployed Qwen digest unchanged
+   when releasing a gateway-only fix. The older **Publish runtime images** workflow
+   remains the GHCR publication path; it is not used for this GAR gateway release.
 
 Image publication never dispatches a Tinfoil runtime release or deploys a VM.
 

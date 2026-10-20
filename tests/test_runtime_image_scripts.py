@@ -23,6 +23,16 @@ import source_delta  # noqa: E402
 DIGEST = "sha256:" + "a" * 64
 
 
+def test_gar_gateway_requires_exact_package_and_immutable_digest():
+    reference = smoke_image.GAR_GATEWAY + "@" + DIGEST
+    assert smoke_image.image_ref_allowed("gateway", reference, False)
+    assert not smoke_image.image_ref_allowed("qwen", reference, False)
+    assert not smoke_image.image_ref_allowed("gateway", smoke_image.GAR_GATEWAY + ":latest", False)
+    assert not smoke_image.image_ref_allowed(
+        "gateway", reference.replace("public/", "private/"), False
+    )
+
+
 def test_smoke_video_model_matches_baked_catalog():
     program = ast.parse(smoke_image.GATEWAY)
     fields = next(
@@ -328,7 +338,9 @@ def test_gateway_has_explicit_egress_for_usage_reporter():
         "egress": "allowlist",
         "allow": ["api.inference.aptoslabs.com"],
     }
-    gateway = next(container for container in config["containers"] if container["name"] == "litellm")
+    gateway = next(
+        container for container in config["containers"] if container["name"] == "litellm"
+    )
     assert gateway["networks"] == ["models", "gateway-egress"]
     assert all(
         "gateway-egress" not in container.get("networks", [])

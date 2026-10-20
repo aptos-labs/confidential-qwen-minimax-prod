@@ -14,6 +14,9 @@ PACKAGES = {
     "gateway": "ghcr.io/aptos-labs/confidential-qwen-minimax-paid-gateway",
     "qwen": "ghcr.io/aptos-labs/confidential-qwen-minimax-qwen-metered",
 }
+GAR_GATEWAY = (
+    "us-docker.pkg.dev/aptos-registry/ccs-images-public/confidential-qwen-minimax-paid-gateway"
+)
 SECRET = "synthetic-image-smoke-reporter-secret-0123456789"
 GATEWAY = r"""
 import http.client,json,os,pathlib,subprocess,sys,time
@@ -161,7 +164,12 @@ def run_image(kind: str, image: str, scenario: str) -> None:
 
 
 def image_ref_allowed(kind: str, image: str, local: bool) -> bool:
-    if re.fullmatch(re.escape(PACKAGES[kind]) + r"@sha256:[0-9a-f]{64}", image):
+    packages = [PACKAGES[kind]]
+    if kind == "gateway":
+        packages.append(GAR_GATEWAY)
+    if any(
+        re.fullmatch(re.escape(package) + r"@sha256:[0-9a-f]{64}", image) for package in packages
+    ):
         return True
     return (
         local
