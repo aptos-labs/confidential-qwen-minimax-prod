@@ -22,8 +22,12 @@ policy, and API surface of archived release `v0.0.12`, in the canonical YAML ord
 after the fleet API's JSON round trip. Its SHA-256 is
 `9bda5d1b8b69b8280cc0b62acb62d01d131e332206a8a527f3edc19085fa4122`.
 
-A paid gateway fronts both models. It admits requests through CCS before calling a model
-server. Qwen is a chat/audio model. MiniMax is a synchronous video endpoint,
+A gateway fronts both models and attempts CCS admission before calling a model
+server. When the admission route returns 404, the gateway uses the same usage-only
+fallback as Cosmos: generation proceeds with a 30-minute deadline, and billing
+checkpoints and settlement are skipped. Other admission failures remain errors.
+This fallback does not establish that generated video is billed.
+Qwen is a chat/audio model. MiniMax is a synchronous video endpoint,
 `POST /v1/videos/sync`, and returns `video/mp4`.
 
 The CVM uses Tinfoil's signed `extra_large_2d` hardware profile
@@ -34,7 +38,8 @@ config, external config, and two model volumes).
 ## Sources
 
 - `images/paid-gateway/` contains the gateway, its baked LiteLLM config, entrypoint, and
-  offline tests.
+  offline tests. Its model catalog, backend target, and multipart validation are
+  for MiniMax, including `extra_params.task=t2va` and audio generation parameters.
 - `images/qwen-metered/` installs the hash-checked vLLM-Omni meter patch at image build
   time. This release pins the already-published
   `ghcr.io/aptos-labs/confidential-qwen-minimax-paid-gateway` and
@@ -87,4 +92,5 @@ protected external configuration.
 This repository contains no credentials. The certificate authorization token and
 `USAGE_REPORTER_SECRET` exist only in the protected external configuration. The gateway's CCS
 destination and reporter identity are fixed in measured code. Missing or invalid reporter
-credentials fail startup; unavailable admission fails closed.
+credentials fail startup. Admission transport errors and server failures fail closed;
+only an explicit 404 selects the usage-only fallback described above.

@@ -11,6 +11,7 @@ import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
+BASELINE_REVISION = "4af0cde4a3a74b00deccf5a3b5654f733794c740"
 BASELINE_SHA256 = "14cec7260731d54d538b75e2d06e5072029c4be3549f4c88dd962eccc9cf8111"
 
 
@@ -38,7 +39,11 @@ def unique_sources(pairs: list[tuple[str, str]]) -> dict[str, str]:
 
 
 def baseline_sources() -> dict[str, str]:
-    raw = subprocess.check_output(["git", "show", "v0.0.5:tinfoil-config.yml"], cwd=ROOT)
+    # The v0.0.5 tag belongs to the archived repository; its commit remains in
+    # this repository's ancestry. Keep verifying the published content hash.
+    raw = subprocess.check_output(
+        ["git", "show", f"{BASELINE_REVISION}:tinfoil-config.yml"], cwd=ROOT
+    )
     if hashlib.sha256(raw).hexdigest() != BASELINE_SHA256:
         raise RuntimeError("v0.0.5 runtime does not match its published digest")
     bundles = re.findall(r'base64\.b64decode\("""\s*([A-Za-z0-9+/=\s]+)"""\)\)', raw.decode())

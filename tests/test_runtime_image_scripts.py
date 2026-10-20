@@ -1,5 +1,6 @@
 """Offline script/packaging guards; actual image execution is a separate CI gate."""
 
+import ast
 import base64
 import hashlib
 import io
@@ -20,6 +21,24 @@ import smoke_image  # noqa: E402
 import source_delta  # noqa: E402
 
 DIGEST = "sha256:" + "a" * 64
+
+
+def test_smoke_video_model_matches_baked_catalog():
+    program = ast.parse(smoke_image.GATEWAY)
+    fields = next(
+        ast.literal_eval(node.value)
+        for node in ast.walk(program)
+        if isinstance(node, ast.Assign)
+        and any(isinstance(target, ast.Name) and target.id == "fields" for target in node.targets)
+    )
+    catalog = yaml.safe_load((ROOT / "images/paid-gateway/litellm.yaml").read_text())
+    video = next(
+        model
+        for model in catalog["model_list"]
+        if model.get("model_info", {}).get("mode") == "video"
+    )
+    assert fields["model"] == video["model_name"]
+    assert json.loads(fields["extra_params"])["task"] == "t2va"
 
 
 def baseline_bytes(*values):
