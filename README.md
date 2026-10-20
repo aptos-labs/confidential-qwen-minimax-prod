@@ -17,10 +17,10 @@ release is a new tag. Do not reuse an archived tag.
 ## What is attested
 
 `tinfoil-config.yml` is the exact measured runtime the CVM host agent materializes for the
-fleet object. It preserves the image digests, model-pack references, GPU split, network
-policy, and API surface of archived release `v0.0.12`, in the canonical YAML order emitted
-after the fleet API's JSON round trip. Its SHA-256 is
-`9bda5d1b8b69b8280cc0b62acb62d01d131e332206a8a527f3edc19085fa4122`.
+fleet object. Release `v0.2.1` replaces the gateway image with the GAR build below, preserving
+the model images, model packs, GPU split, network policy, and API surface of `v0.2.0`.
+The YAML uses the canonical order emitted after the fleet API's JSON round trip. Its SHA-256 is
+`19d18cd2e346266e9ef1068f03410153507529486dc37c1a3fdbb967e6d41f0d`.
 
 A gateway fronts both models and attempts CCS admission before calling a model
 server. When the admission route returns 404, the gateway uses the same usage-only
@@ -42,9 +42,18 @@ config, external config, and two model volumes).
   for MiniMax, including `extra_params.task=t2va` and audio generation parameters.
 - `images/qwen-metered/` installs the hash-checked vLLM-Omni meter patch at image build
   time. This release pins the already-published
-  `ghcr.io/aptos-labs/confidential-qwen-minimax-paid-gateway` and
-  `ghcr.io/aptos-labs/confidential-qwen-minimax-qwen-metered` digests. A rebuilt image
+  GAR gateway digest below and the existing
+  `ghcr.io/aptos-labs/confidential-qwen-minimax-qwen-metered` digest. A rebuilt image
   requires its own verification and a new runtime release.
+
+## Gateway build for v0.2.1
+
+- Source: `63794c53616d32005298b48f8c694e832fd6b218`.
+- Cloud Build: [`621f1930-7fff-4f20-a984-5ed4273aa5a5`](https://console.cloud.google.com/cloud-build/builds/621f1930-7fff-4f20-a984-5ed4273aa5a5?project=aptos-cloudbuild).
+- Image: `us-docker.pkg.dev/aptos-registry/ccs-images-public/confidential-qwen-minimax-paid-gateway@sha256:a8e08db47e504fc01aee0c56ff8061c8f94ce7c4685d67d8e5676531aff51873`.
+
+The build runs the Dockerfile tests, isolated smoke, anonymous digest pull, and
+published-image smoke. Cloud Build provides the source archive and image provenance.
 
 ## Image publication and verification
 
