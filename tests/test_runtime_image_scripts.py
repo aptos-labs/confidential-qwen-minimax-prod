@@ -32,7 +32,11 @@ def test_smoke_video_model_matches_baked_catalog():
         and any(isinstance(target, ast.Name) and target.id == "fields" for target in node.targets)
     )
     catalog = yaml.safe_load((ROOT / "images/paid-gateway/litellm.yaml").read_text())
-    video = next(model for model in catalog["model_list"] if model.get("model_info", {}).get("mode") == "video")
+    video = next(
+        model
+        for model in catalog["model_list"]
+        if model.get("model_info", {}).get("mode") == "video"
+    )
     assert fields["model"] == video["model_name"]
     assert json.loads(fields["extra_params"])["task"] == "t2va"
 

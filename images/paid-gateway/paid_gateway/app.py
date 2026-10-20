@@ -1,4 +1,4 @@
-"""Fail-closed paid ASGI boundary, inside the Model CVM's existing gateway."""
+"""ASGI gateway with explicit usage-only fallback when CCS admission is absent."""
 
 from __future__ import annotations
 
