@@ -68,6 +68,8 @@ config, external config, and two model volumes).
    `us-docker.pkg.dev/aptos-registry/ccs-images-public/confidential-qwen-minimax-paid-gateway`,
    then anonymously pulls and smokes the exact published digest. It uses the existing
    CCS builder service account and requires Cloud Build provenance verification.
+   Docker CLI and BuildKit are pinned by digest; Buildx supplies the Dockerfile
+   features that the default Cloud Build Docker builder does not support.
    The source archive contains only committed repository files. Credentials and fleet
    external configuration must never be included in the build context.
 3. Record the successful build ID, source commit, and resulting digest. Inspect the
