@@ -17,7 +17,7 @@ containers:
       else:
           raise RuntimeError('Video method guard is missing')
     timeout: 10s
-  image: ghcr.io/aptos-labs/confidential-qwen-minimax-paid-gateway@sha256:9de0c62233566f90b20df3644e54230ffb2bebf47051c15263e657f45aae70c4
+  image: us-docker.pkg.dev/aptos-registry/ccs-images-public/confidential-qwen-minimax-paid-gateway@sha256:a8e08db47e504fc01aee0c56ff8061c8f94ce7c4685d67d8e5676531aff51873
   name: litellm
   networks:
   - models
