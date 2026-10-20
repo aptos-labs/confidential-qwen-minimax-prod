@@ -20,7 +20,7 @@ release is a new tag. Do not reuse an archived tag.
 fleet object. It preserves the image digests, model-pack references, GPU split, network
 policy, and API surface of archived release `v0.0.12`, in the canonical YAML order emitted
 after the fleet API's JSON round trip. Its SHA-256 is
-`adf7632800b140e29eab2f48efca224ceb9a6b6effda0e45b50f08b76b3c9a5a`.
+`9bda5d1b8b69b8280cc0b62acb62d01d131e332206a8a527f3edc19085fa4122`.
 
 A paid gateway fronts both models. It admits requests through CCS before calling a model
 server. Qwen is a chat/audio model. MiniMax is a synchronous video endpoint,

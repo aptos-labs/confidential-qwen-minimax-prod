@@ -79,7 +79,7 @@ containers:
     - -sf
     - http://localhost:8001/health
     timeout: 10s
-  image: vllm/vllm-omni:v0.28.0-x86_64@sha256:4780186f168af96634917208596675439fa71cb5ed3440a30e8c21ca1defc451
+  image: us-docker.pkg.dev/aptos-registry/ccs-images-public/minimax-watermark@sha256:7b8454effe86fa13c8f80f4481c2fdaca0ce7fe321f8327a37858afe1448fbb7
   ipc: private
   name: vllm-omni-minimax
   networks:
