@@ -66,7 +66,7 @@ def render(base: dict[str, Any], gateway: str, worker: str) -> dict[str, Any]:
                     "CMD",
                     "python3",
                     "-c",
-                    "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health/readiness', timeout=3).close()",
+                    "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health/liveliness', timeout=3).close()",
                 ],
                 "interval": "30s",
                 "timeout": "10s",

@@ -8,7 +8,11 @@ REGISTRY = "us-docker.pkg.dev/aptos-registry/ccs-images-public/confidential-qwen
 SCRIPT = r"""
 import asyncio,hashlib,json,pathlib
 import httpx
+import torch
+from transformers import AutoModelForCausalLM,AutoTokenizer
 from moderation_worker.app import create_app
+from moderation_worker.models import Guard,MODEL_DIR
+from paid_gateway.moderation_contract import ALLOW,ModerationFailure
 from moderation_worker.policy import GUARD_REVISION,guard_verdict
 root=pathlib.Path('/opt/qwen3guard')
 artifact=json.loads((root/'artifact.json').read_text())
@@ -23,7 +27,21 @@ async def smoke():
   result=await client.post('/pre',content=b'fixture')
   assert result.status_code==503 and result.json()=={'decision':'block','category':'moderation_unavailable'}
 asyncio.run(smoke())
-print('Worker artifact verified; GPU-less inference fails closed.')
+guard=Guard()
+try:
+ guard.load()
+except ModerationFailure:
+ assert not guard.healthy
+else:
+ raise AssertionError('Production Guard startup must reject a GPU-less container')
+# Exercise the real tokenizer/generation adapter on CPU only in this offline test.
+# Production load() still requires exactly one visible CUDA GPU.
+torch.set_num_threads(2)
+guard.tokenizer=AutoTokenizer.from_pretrained(MODEL_DIR,local_files_only=True,trust_remote_code=False)
+guard.model=AutoModelForCausalLM.from_pretrained(MODEL_DIR,local_files_only=True,trust_remote_code=False,torch_dtype=torch.float32,device_map='cpu').eval()
+guard.healthy=True
+assert guard._check('Draw a red square.')==ALLOW
+print('Worker artifact and real CPU Guard self-test verified; GPU-less startup fails closed.')
 """
 
 
