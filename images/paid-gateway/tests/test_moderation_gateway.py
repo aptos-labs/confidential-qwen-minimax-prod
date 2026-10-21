@@ -142,3 +142,30 @@ def test_only_checked_bytes_released_after_postcheck(monkeypatch):
             await gateway.close()
 
     asyncio.run(case())
+
+
+def test_aggregate_health_reports_unavailable_guard():
+    async def case():
+        async def model(request):
+            return httpx.Response(200, json={"status": "ok"})
+
+        async def worker(request):
+            return httpx.Response(503)
+
+        gateway = PaidGateway(
+            downstream,
+            FakeBilling("absent"),
+            httpx.AsyncClient(transport=httpx.MockTransport(model)),
+            ModerationClient(httpx.AsyncClient(transport=httpx.MockTransport(worker))),
+        )
+        try:
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(gateway), base_url="https://test"
+            ) as client:
+                result = await client.get("/health")
+            assert result.status_code == 503
+            assert [b["status"] for b in result.json()["backends"]] == [200, 200, 503]
+        finally:
+            await gateway.close()
+
+    asyncio.run(case())

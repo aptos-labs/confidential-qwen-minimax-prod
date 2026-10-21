@@ -106,6 +106,8 @@ metrics remain available. Neither model output explanations nor transcripts are 
 Startup exposes liveness independently of readiness, avoiding a gateway/Qwen boot cycle.
 Readiness requires Guard's safe-text self-test and Qwen text/image/audio self-tests. Qwen
 startup is retried; unavailable dependencies never enable generation without moderation.
+The gateway's aggregate `/health` includes worker readiness and returns 503 if it is unavailable;
+the gateway's boot liveness remains independent of model/worker readiness.
 One worker request runs at a time; overload returns a fixed operational block. Default
 pre/post deadlines are 110/230 seconds in the worker and 120/240 in the gateway, bounded
 by the admission deadline. These are provisional limits to tune in W6.

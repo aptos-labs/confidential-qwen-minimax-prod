@@ -67,6 +67,8 @@ def test_unauthenticated_get_observability_paths_pass_through(monkeypatch):
         requests.append(request.url.path)
         if request.url.path == "/health":
             return httpx.Response(200, json={"status": "ok"})
+        if request.url.path == "/health/readiness":
+            return httpx.Response(200, json={"status": "ready"})
         if request.url.path == "/metrics":
             return httpx.Response(
                 200, text="# HELP up\\n# TYPE up gauge\\nup 1\\n", headers={"Content-Type": "text/plain"}
@@ -74,6 +76,7 @@ def test_unauthenticated_get_observability_paths_pass_through(monkeypatch):
         return httpx.Response(404)
 
     gateway.upstream = httpx.AsyncClient(transport=httpx.MockTransport(proxy))
+    gateway.moderation.client = httpx.AsyncClient(transport=httpx.MockTransport(proxy))
     with TestClient(app) as client:
         health = client.get("/health")
         assert health.status_code == 200
@@ -85,7 +88,7 @@ def test_unauthenticated_get_observability_paths_pass_through(monkeypatch):
         assert client.post("/health", json={}).status_code == 404
         assert client.post("/metrics", json={}).status_code == 404
         assert client.get("/v1/chat/completions").status_code == 405
-    assert requests == ["/health", "/health", "/metrics", "/metrics"]
+    assert sorted(requests) == ["/health", "/health", "/health/readiness", "/metrics", "/metrics"]
     assert gateway.billing.client.is_closed and gateway.upstream.is_closed
 
 

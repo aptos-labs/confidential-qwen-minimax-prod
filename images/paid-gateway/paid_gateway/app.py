@@ -25,7 +25,7 @@ from .client import (
     strict_json,
 )
 from .media import MeterError, mp4_duration
-from .moderation import ModerationClient
+from .moderation import WORKER_URL, ModerationClient
 from .protocol import (
     BODY_LIMIT,
     INPUT_LIMIT,
@@ -462,7 +462,9 @@ class PaidGateway:
         return list(await asyncio.gather(*(fetch(base) for base in self.observability_targets)))
 
     async def health(self, scope: Scope, receive: Receive, send: Send) -> None:
-        results = await self._backend_get("/health")
+        results, moderation_ready = await asyncio.gather(
+            self._backend_get("/health"), self.moderation.ready()
+        )
         backends = [
             {
                 "endpoint": endpoint,
@@ -470,6 +472,7 @@ class PaidGateway:
             }
             for endpoint, result in zip(self.observability_targets, results, strict=True)
         ]
+        backends.append({"endpoint": WORKER_URL, "status": 200 if moderation_ready else 503})
         healthy = all(item["status"] == 200 for item in backends)
         await JSONResponse(
             {"status": "ok" if healthy else "unhealthy", "backends": backends},

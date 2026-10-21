@@ -16,6 +16,8 @@ jobs:
           persist-credentials: false
       - name: Install test tools
         run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
           python3 -m venv /tmp/moderation-tests
           /tmp/moderation-tests/bin/pip install pytest==9.1.1 httpx==0.28.1 Pillow==12.2.0 fastapi==0.116.1 starlette==0.47.3 uvicorn==0.35.0 PyYAML==6.0.3 mypy==2.4.0 ruff==0.17.1
           command -v ffmpeg

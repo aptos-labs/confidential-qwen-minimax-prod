@@ -7,7 +7,7 @@ import asyncio
 import httpx
 
 from .client import GatewayError
-from .moderation_contract import FAILURE, ModerationFailure, Verdict
+from .moderation_contract import FAILURE, ModerationFailure, Verdict, strict_object
 
 WORKER_URL = "http://moderation-worker:8090"
 PRE_TIMEOUT = 120
@@ -24,6 +24,21 @@ class ModerationClient:
 
     async def close(self) -> None:
         await self.client.aclose()
+
+    async def ready(self) -> bool:
+        try:
+            async with asyncio.timeout(3):
+                async with self.client.stream("GET", WORKER_URL + "/health/readiness") as response:
+                    if response.status_code != 200:
+                        return False
+                    data = bytearray()
+                    async for chunk in response.aiter_bytes(chunk_size=1024):
+                        data.extend(chunk)
+                        if len(data) > 1024:
+                            return False
+                    return strict_object(bytes(data)) == {"status": "ready"}
+        except (ModerationFailure, httpx.HTTPError, TimeoutError):
+            return False
 
     async def check(
         self, stage: str, body: bytes, content_type: str, *, audio_expected: bool = True
