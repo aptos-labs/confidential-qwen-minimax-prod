@@ -15,6 +15,8 @@ from urllib.parse import urlsplit
 
 import httpx
 
+from .moderation_contract import POLICY_CATEGORIES
+
 BILLING_URL: Final = "https://api.inference.aptoslabs.com"
 REPORTER_ID: Final = "model-router"
 _BILLING_ROUTE_ABSENT: Final = object()
@@ -33,7 +35,7 @@ def production_billing() -> BillingClient:
 
 
 class GatewayError(Exception):
-    def __init__(self, code: str, status: int = 503) -> None:
+    def __init__(self, code: str, status: int = 503, *, category: str | None = None) -> None:
         allowed = {
             "invalid_request",
             "unauthorized",
@@ -44,10 +46,16 @@ class GatewayError(Exception):
             "upstream_failed",
             "output_limit",
             "content_policy_violation",
+            "moderation_unavailable",
         }
         if code not in allowed:
             raise ValueError("invalid gateway error code")
         self.code, self.status = code, status
+        if category is not None and (
+            code != "content_policy_violation" or category not in POLICY_CATEGORIES
+        ):
+            raise ValueError("invalid error category")
+        self.category = category
         super().__init__(code)
 
 

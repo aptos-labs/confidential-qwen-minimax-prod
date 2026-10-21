@@ -25,6 +25,7 @@ from .client import (
     strict_json,
 )
 from .media import MeterError, mp4_duration
+from .moderation import WORKER_URL, ModerationClient
 from .protocol import (
     BODY_LIMIT,
     INPUT_LIMIT,
@@ -37,7 +38,7 @@ from .protocol import (
     normalize_chat,
     video_meter,
 )
-from .video_request import validate_video
+from .video_request import parse_video
 
 LOG = logging.getLogger(__name__)
 CHAT_PATH = "/v1/chat/completions"
@@ -246,13 +247,16 @@ class Writer:
 
     async def error(self, error: GatewayError) -> None:
         value = {"error": {"type": "inference_error", "code": error.code, "message": error.code}}
+        value["error"]["request_id"] = self.request_id
+        if error.category is not None:
+            value["error"]["category"] = error.category
         if self.started:
             await self.event(b"data: " + encode(value) + b"\n\n")
             await self.end()
         else:
-            await JSONResponse(value, status_code=error.status)(
-                self.scope, self.receive, self.send
-            )
+            await JSONResponse(
+                value, status_code=error.status, headers={"X-Request-ID": self.request_id}
+            )(self.scope, self.receive, self.send)
 
 
 async def events(response: httpx.Response) -> AsyncIterator[str]:
@@ -291,12 +295,14 @@ class PaidGateway:
         app: ASGIApp,
         billing: BillingClient | None = None,
         upstream: httpx.AsyncClient | None = None,
+        moderation: ModerationClient | None = None,
     ) -> None:
         self.app = app
         self.allowed_models = PRODUCTION_MODELS
         if billing is None:
             billing = production_billing()
         self.billing = billing
+        self.moderation = moderation or ModerationClient()
         self.upstream = upstream or httpx.AsyncClient(
             timeout=httpx.Timeout(1800, connect=10), trust_env=False
         )
@@ -312,14 +318,17 @@ class PaidGateway:
         )
 
     async def close(self) -> None:
-        """Close both clients once, including when one client's cleanup fails."""
+        """Close all clients once, including when one client's cleanup fails."""
         if self.closed:
             return
         self.closed = True
         try:
             await self.billing.close()
         finally:
-            await self.upstream.aclose()
+            try:
+                await self.upstream.aclose()
+            finally:
+                await self.moderation.close()
 
     async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
         if scope["type"] == "lifespan":
@@ -453,7 +462,9 @@ class PaidGateway:
         return list(await asyncio.gather(*(fetch(base) for base in self.observability_targets)))
 
     async def health(self, scope: Scope, receive: Receive, send: Send) -> None:
-        results = await self._backend_get("/health")
+        results, moderation_ready = await asyncio.gather(
+            self._backend_get("/health"), self.moderation.ready()
+        )
         backends = [
             {
                 "endpoint": endpoint,
@@ -461,6 +472,7 @@ class PaidGateway:
             }
             for endpoint, result in zip(self.observability_targets, results, strict=True)
         ]
+        backends.append({"endpoint": WORKER_URL, "status": 200 if moderation_ready else 503})
         healthy = all(item["status"] == 200 for item in backends)
         await JSONResponse(
             {"status": "ok" if healthy else "unhealthy", "backends": backends},
@@ -532,9 +544,10 @@ class PaidGateway:
                             data = await self.collect(response)
                             await self.buffered_chat(data, session, writer, meter)
             else:
-                video_inputs = validate_video(body, request.headers["content-type"])
-                maximum = await session.admit(model, video_inputs, ["video"])
+                video = parse_video(body, request.headers["content-type"])
+                maximum = await session.admit(model, video.modalities, ["video"])
                 async with asyncio.timeout_at(session.deadline):
+                    await self.moderation.check("pre", body, request.headers["content-type"])
                     async with self.upstream.stream(
                         "POST",
                         self.targets[model],
@@ -553,6 +566,9 @@ class PaidGateway:
                             raise GatewayError("upstream_failed", 502)
                         data = await self.collect(response)
                     duration = mp4_duration(data)
+                    await self.moderation.check(
+                        "post", data, "video/mp4", audio_expected=video.audio_expected
+                    )
                     if not session.billing_disabled:
                         await session.checkpoint(video_meter(duration, maximum))
                     await session.finish("completed")

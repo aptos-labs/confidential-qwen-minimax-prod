@@ -1,0 +1,12 @@
+**
+!images/
+!images/moderation-worker/
+!images/moderation-worker/Dockerfile
+!images/moderation-worker/download_guard.py
+!images/moderation-worker/moderation_worker/
+!images/moderation-worker/moderation_worker/*.py
+!images/moderation-worker/tests/
+!images/moderation-worker/tests/*.py
+!images/paid-gateway/
+!images/paid-gateway/paid_gateway/
+!images/paid-gateway/paid_gateway/*.py

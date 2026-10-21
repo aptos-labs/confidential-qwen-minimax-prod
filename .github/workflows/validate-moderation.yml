@@ -1,0 +1,47 @@
+name: Validate moderation
+on:
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: moderation-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+        with:
+          persist-credentials: false
+      - name: Install test tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends ffmpeg
+          python3 -m venv /tmp/moderation-tests
+          /tmp/moderation-tests/bin/pip install pytest==9.1.1 httpx==0.28.1 Pillow==12.2.0 fastapi==0.116.1 starlette==0.47.3 uvicorn==0.35.0 PyYAML==6.0.3 mypy==2.4.0 ruff==0.17.1
+          command -v ffmpeg
+          command -v ffprobe
+      - name: Test, lint and type-check
+        run: |
+          /tmp/moderation-tests/bin/python -m pytest -q
+          /tmp/moderation-tests/bin/ruff check images/moderation-worker images/paid-gateway/paid_gateway/moderation* scripts/render_moderated_runtime.py scripts/evaluate_moderation.py scripts/smoke_moderation_image.py tests/test_moderated_runtime.py images/paid-gateway/tests/test_moderation_gateway.py
+          /tmp/moderation-tests/bin/ruff format --check images/moderation-worker images/paid-gateway/paid_gateway/moderation* scripts/render_moderated_runtime.py scripts/evaluate_moderation.py scripts/smoke_moderation_image.py tests/test_moderated_runtime.py images/paid-gateway/tests/test_moderation_gateway.py
+          /tmp/moderation-tests/bin/mypy images/paid-gateway/paid_gateway/moderation_contract.py images/paid-gateway/paid_gateway/moderation.py images/moderation-worker/moderation_worker scripts/render_moderated_runtime.py scripts/evaluate_moderation.py
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+        with:
+          persist-credentials: false
+      - name: Require disk space
+        run: |
+          python3 -c 'import shutil; assert shutil.disk_usage("/var/lib/docker").free >= 30 * 1024**3, "Need 30 GiB free for worker build"'
+      - uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
+      - name: Test worker image offline
+        run: docker buildx build --platform linux/amd64 --target test -f images/moderation-worker/Dockerfile .
+      - name: Load and smoke final image
+        run: |
+          docker buildx build --platform linux/amd64 --target runtime --load -t ccs-moderation:smoke -f images/moderation-worker/Dockerfile .
+          python3 scripts/smoke_moderation_image.py ccs-moderation:smoke --local
