@@ -18,12 +18,12 @@ release is a new tag. Do not reuse an archived tag.
 ## What is attested
 
 `tinfoil-config.yml` is the exact measured runtime the CVM host agent materializes for the
-fleet object. Release `v0.3.0` adds mandatory MiniMax input/output moderation, the private
+fleet object. Release `v0.3.1` adds mandatory MiniMax input/output moderation, the private
 Guard worker, and a 4/3/1 GPU allocation. Model images and packs, hardware shape, and public
 API routes are preserved. This release is for initial live validation; moderation quality
 and latency on GPUs have not yet been established.
 The YAML uses the canonical order emitted after the fleet API's JSON round trip. Its SHA-256 is
-`733c69c10db82f01f827546cd72633e16d930f8c1091741cf1e71dc9c4cc576f`.
+`2a7bbb611ca108ccf0959f5b0bd7bbb0e967a1bc9596dbfcca2b7194bf927bf3`.
 
 A gateway fronts both models and attempts CCS admission before calling a model
 server. When the admission route returns 404, the gateway uses the same usage-only
@@ -53,7 +53,7 @@ config, external config, and two model volumes).
   `ghcr.io/aptos-labs/confidential-qwen-minimax-qwen-metered` digest. A rebuilt image
   requires its own verification and a new runtime release.
 
-## Moderation images for v0.3.0
+## Moderation images for v0.3.0 and v0.3.1
 
 Both images were built from `70b8e27d0f198cc9307e551f539b8565bdf39001`.
 
@@ -69,6 +69,14 @@ Google-signed DSSE provenance was verified against the build IDs, source archive
 digests. Provenance occurrences are stored in Container Analysis in `aptos-cloudbuild`,
 separately from the registry project. These CPU checks do not measure GPU inference quality
 or performance. The gateway coordinates moderation calls; it does not need a GPU.
+
+v0.3.1 removes the unsupported `--disable-log-requests` Qwen startup option introduced in
+v0.3.0. The exact pinned image contains vLLM 0.28.0 with request logging disabled by default;
+backend stdout/stderr suppression remains in place. Image pins, GPU placement and moderation
+behavior are unchanged. [CPU image inspection](https://console.cloud.google.com/cloud-build/builds/0bd5fd4c-a51b-4704-b8c6-91578eac1bf5?project=352118355028)
+confirmed the installed versions, logging default and absence of that option. The CPU CLI
+help command could not initialize its platform without a GPU, so live validation is still
+required.
 
 ## Historical gateway build for v0.2.1
 

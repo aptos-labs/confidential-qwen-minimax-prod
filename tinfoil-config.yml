@@ -34,7 +34,7 @@ containers:
     --omni --trust-remote-code --host=0.0.0.0 --port=8000 \
     --served-model-name qwen3-omni \
     --init-timeout 1800 --stage-init-timeout 900 \
-    --stage-overrides '{"1": {"num_replicas": 1, "devices": "1"}, "2": {"num_replicas": 1, "devices": "2"}}' --disable-log-requests >/dev/null 2>&1
+    --stage-overrides '{"1": {"num_replicas": 1, "devices": "1"}, "2": {"num_replicas": 1, "devices": "2"}}' >/dev/null 2>&1
   entrypoint:
   - /bin/sh
   - -c

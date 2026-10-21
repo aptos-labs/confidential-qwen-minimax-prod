@@ -1,9 +1,15 @@
 # MiniMax moderation
 
-Status: v0.3.0 runtime prepared for live validation. `tinfoil-config.yml` pins the published,
+Status: v0.3.1 runtime prepared for live validation. `tinfoil-config.yml` pins the published,
 verified worker and gateway images with the 4/3/1 allocation. Real-model quality and latency
 remain unvalidated until the GPU checks below pass. The immutable unmoderated v0.2.1 baseline
 is retained in `runtime-baselines/v0.2.1.yml`; the renderer always starts from that baseline.
+
+The v0.3.0 live boot reached MiniMax readiness but Qwen failed startup. The exact Qwen image
+contains vLLM/vLLM-Omni 0.28.0, whose CLI has no `--disable-log-requests` option and whose
+`enable_log_requests` default is false. v0.3.1 removes that unsupported option and retains
+stdout/stderr suppression. Images, model packs, 4/3/1 placement and all moderation checks
+are unchanged. The corrected runtime still needs live readiness and generation checks.
 
 ## Request flow and decisions
 
