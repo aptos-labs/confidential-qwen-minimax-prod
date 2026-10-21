@@ -18,7 +18,9 @@ WORKER = render.REGISTRY + "confidential-qwen-minimax-moderation-worker@sha256:"
 
 def test_license_snapshot_matches_recorded_hash():
     expected = (ROOT / "docs/minimax-h3-license.sha256").read_text().split()[0]
-    assert hashlib.sha256((ROOT / "docs/minimax-h3-license.txt").read_bytes()).hexdigest() == expected
+    assert (
+        hashlib.sha256((ROOT / "docs/minimax-h3-license.txt").read_bytes()).hexdigest() == expected
+    )
 
 
 def test_candidate_has_disjoint_4_3_1_placement_and_private_moderation():
