@@ -1,0 +1,2 @@
+# Preserve the exact upstream license snapshot, including its original whitespace.
+docs/minimax-h3-license.txt -whitespace

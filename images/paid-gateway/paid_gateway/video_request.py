@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import math
+from dataclasses import dataclass
 from email import policy
 from email.parser import BytesHeaderParser
 from typing import Any
@@ -28,14 +29,27 @@ def number(value: Any, low: float, high: float, *, whole: bool = False) -> int |
     raise AssertionError("unreachable")
 
 
-def validate_video(body: bytes, content_type: str) -> list[str]:
+@dataclass(frozen=True)
+class VideoRequest:
+    prompt: str
+    negative_prompt: str
+    images: tuple[tuple[str, bytes], ...]
+    audio_expected: bool
+
+    @property
+    def modalities(self) -> list[str]:
+        return ["text", "image"] if self.images else ["text"]
+
+
+def parse_video(body: bytes, content_type: str) -> VideoRequest:
     try:
         header = BytesHeaderParser(policy=policy.HTTP).parsebytes(
             b"Content-Type: " + content_type.encode("ascii") + b"\r\n\r\n"
         )
         boundary = header.get_boundary()
         if (
-            header.get_content_type() != "multipart/form-data"
+            any(getattr(value, "defects", ()) for value in header.values())
+            or header.get_content_type() != "multipart/form-data"
             or not boundary
             or not 1 <= len(boundary) <= 70
             or not boundary.isascii()
@@ -49,6 +63,7 @@ def validate_video(body: bytes, content_type: str) -> list[str]:
             invalid()
         fields: dict[str, str] = {}
         files: list[str] = []
+        images: list[tuple[str, bytes]] = []
         for index, section in enumerate(sections[:-1]):
             if index:
                 if not section.startswith(b"\r\n"):
@@ -58,8 +73,10 @@ def validate_video(body: bytes, content_type: str) -> list[str]:
             if not separator or len(headers) > 8192 or headers.count(b"\r\n") > 30:
                 invalid()
             part = BytesHeaderParser(policy=policy.HTTP).parsebytes(headers + b"\r\n\r\n")
-            if part.defects or any(
-                k.lower() not in {"content-disposition", "content-type"} for k in part
+            if (
+                part.defects
+                or any(getattr(value, "defects", ()) for value in part.values())
+                or any(k.lower() not in {"content-disposition", "content-type"} for k in part)
             ):
                 invalid()
             if (
@@ -96,6 +113,7 @@ def validate_video(body: bytes, content_type: str) -> list[str]:
                 else:
                     invalid()
                 files.append(name)
+                images.append((media_type, data))
                 continue
             if name in fields or len(data) > 65536:
                 invalid()
@@ -123,6 +141,10 @@ def validate_video(body: bytes, content_type: str) -> list[str]:
             "extra_params",
         }
         if set(fields) - allowed or fields.get("model") != VIDEO or not fields.get("prompt"):
+            invalid()
+        if any(
+            len(fields.get(name, "").encode()) > 16384 for name in ("prompt", "negative_prompt")
+        ):
             invalid()
         if files.count("input_reference") > 1 or (
             "input_reference" in files and "input_references" in files
@@ -193,4 +215,13 @@ def validate_video(body: bytes, content_type: str) -> list[str]:
                 number(extra["audio_flow_shift"], 0, 32)
     except (UnicodeError, TypeError, ValueError, IndexError) as exc:
         raise GatewayError("invalid_request", 400) from exc
-    return ["text", "image"] if files else ["text"]
+    return VideoRequest(
+        fields["prompt"],
+        fields.get("negative_prompt", ""),
+        tuple(images),
+        fields.get("generate_sound", "true").lower() not in {"false", "0"},
+    )
+
+
+def validate_video(body: bytes, content_type: str) -> list[str]:
+    return parse_video(body, content_type).modalities

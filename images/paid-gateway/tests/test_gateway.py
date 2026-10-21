@@ -1233,7 +1233,16 @@ def test_usage_only_video_skips_billing_and_preserves_video_response(monkeypatch
             return httpx.Response(200, headers={"content-type": "video/mp4"}, content=b"mp4")
 
         upstream = httpx.AsyncClient(transport=httpx.MockTransport(model))
-        gateway = PaidGateway(downstream, billing, upstream)
+        from paid_gateway.moderation import ModerationClient
+
+        moderation_calls = []
+
+        def moderate(request):
+            moderation_calls.append(request.url.path)
+            return httpx.Response(200, json={"decision": "allow", "category": "none"})
+
+        moderation = ModerationClient(httpx.AsyncClient(transport=httpx.MockTransport(moderate)))
+        gateway = PaidGateway(downstream, billing, upstream, moderation)
         monkeypatch.setattr("paid_gateway.app.mp4_duration", lambda data: Fraction(4, 1))
         deadlines = []
         timeout_at = asyncio.timeout_at
@@ -1261,9 +1270,10 @@ def test_usage_only_video_skips_billing_and_preserves_video_response(monkeypatch
             assert len(sent) == 1
             assert sent[0].content == raw
             assert sent[0].url == "http://vllm-omni-minimax:8001/v1/videos/sync"
+            assert moderation_calls == ["/pre", "/post"]
             assert len(deadlines) == 1 and 1700 < deadlines[0] <= 1800
         finally:
-            await upstream.aclose()
+            await gateway.close()
 
     from fractions import Fraction
 

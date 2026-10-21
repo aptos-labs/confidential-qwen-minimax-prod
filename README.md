@@ -37,6 +37,11 @@ config, external config, and two model volumes).
 
 ## Sources
 
+- [MiniMax moderation](docs/moderation.md) describes the implemented worker, mandatory
+  gateway checks, 4/3/1 GPU runtime renderer, tests, and staging/release requirements.
+  The deployed `tinfoil-config.yml` remains the v0.2.1 baseline until new image digests and
+  a measured release are validated; that baseline has no moderation worker.
+
 - `images/paid-gateway/` contains the gateway, its baked LiteLLM config, entrypoint, and
   offline tests. Its model catalog, backend target, and multipart validation are
   for MiniMax, including `extra_params.task=t2va` and audio generation parameters.
