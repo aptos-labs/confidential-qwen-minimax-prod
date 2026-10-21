@@ -1,6 +1,6 @@
 # MiniMax moderation
 
-Status: v0.3.1 runtime prepared for live validation. `tinfoil-config.yml` pins the published,
+Status: v0.3.2 runtime prepared for live validation. `tinfoil-config.yml` pins the published,
 verified worker and gateway images with the 4/3/1 allocation. Real-model quality and latency
 remain unvalidated until the GPU checks below pass. The immutable unmoderated v0.2.1 baseline
 is retained in `runtime-baselines/v0.2.1.yml`; the renderer always starts from that baseline.

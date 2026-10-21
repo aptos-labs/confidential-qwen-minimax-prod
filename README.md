@@ -18,12 +18,12 @@ release is a new tag. Do not reuse an archived tag.
 ## What is attested
 
 `tinfoil-config.yml` is the exact measured runtime the CVM host agent materializes for the
-fleet object. Release `v0.3.1` adds mandatory MiniMax input/output moderation, the private
+fleet object. Release `v0.3.2` adds mandatory MiniMax input/output moderation, the private
 Guard worker, and a 4/3/1 GPU allocation. Model images and packs, hardware shape, and public
 API routes are preserved. This release is for initial live validation; moderation quality
 and latency on GPUs have not yet been established.
 The YAML uses the canonical order emitted after the fleet API's JSON round trip. Its SHA-256 is
-`7500730232e47dd85ab7f7ba7dd63d6b93689d1ceec230e7f793c13a3f9ea2d0` (candidate boot-liveness correction; a new signed release is required).
+`350640094d2a49c6d0281b5294112b5abe0f0463c8699ca7202bc85f7e1ee6d9`.
 
 A gateway fronts both models and attempts CCS admission before calling a model
 server. When the admission route returns 404, the gateway uses the same usage-only
@@ -52,6 +52,18 @@ config, external config, and two model volumes).
   time. This release pins the verified GAR gateway and worker images below and the existing
   `ghcr.io/aptos-labs/confidential-qwen-minimax-qwen-metered` digest. A rebuilt image
   requires its own verification and a new runtime release.
+
+## Worker update for v0.3.2
+
+The worker is pinned to `us-docker.pkg.dev/aptos-registry/ccs-images-public/confidential-qwen-minimax-moderation-worker@sha256:fa0948b491ca4b46d2128b592f6a02882176e5863f772fbd779930cf9ae6227a`, built from `a35ba9a251fc082e97f1ac2b986854e7cf3136a3` by
+[Cloud Build 106a35bb-9fac-4580-a1f2-ae22b1e07a44](https://console.cloud.google.com/cloud-build/builds/106a35bb-9fac-4580-a1f2-ae22b1e07a44?project=352118355028).
+The gateway image below is reused. Tests, the real-model CPU adapter self-test, anonymous
+published-digest pull and smoke passed. Google-signed provenance binds the reviewed source
+archive (`e45027657c9c7a506b42cf2f54701d4ade80110f14f786be32de265d802bd680`) to this digest.
+
+This fixes the Transformers 5 tokenizer return-type mismatch that prevented Guard readiness
+in v0.3.1. Worker boot liveness now permits the shim and Qwen to start while moderation is
+unavailable; MiniMax checks remain fail closed. Live GPU validation and timing are pending.
 
 ## Moderation images for v0.3.0 and v0.3.1
 
