@@ -23,7 +23,7 @@ Guard worker, and a 4/3/1 GPU allocation. Model images and packs, hardware shape
 API routes are preserved. This release is for initial live validation; moderation quality
 and latency on GPUs have not yet been established.
 The YAML uses the canonical order emitted after the fleet API's JSON round trip. Its SHA-256 is
-`2a7bbb611ca108ccf0959f5b0bd7bbb0e967a1bc9596dbfcca2b7194bf927bf3`.
+`7500730232e47dd85ab7f7ba7dd63d6b93689d1ceec230e7f793c13a3f9ea2d0` (candidate boot-liveness correction; a new signed release is required).
 
 A gateway fronts both models and attempts CCS admission before calling a model
 server. When the admission route returns 404, the gateway uses the same usage-only

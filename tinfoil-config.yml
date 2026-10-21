@@ -103,7 +103,7 @@ containers:
     - CMD
     - python3
     - -c
-    - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health/readiness', timeout=3).close()
+    - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health/liveliness', timeout=3).close()
     timeout: 10s
   image: us-docker.pkg.dev/aptos-registry/ccs-images-public/confidential-qwen-minimax-moderation-worker@sha256:006cd030837b377c7d8918895f0b77bc18832906d9c34f6704972c5719e22218
   ipc: private

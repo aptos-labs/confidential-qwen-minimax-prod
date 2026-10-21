@@ -248,6 +248,26 @@ def test_worker_failures_are_fixed_blocks_without_content(state, caplog):
     asyncio.run(case())
 
 
+@pytest.mark.parametrize("state", ["not_ready", "unhealthy"])
+def test_boot_liveness_does_not_enable_video_checks(state):
+    async def case():
+        guard, omni = FakeGuard(), FakeOmni()
+        worker = Worker(guard, omni)
+        worker.ready = state != "not_ready"
+        guard.healthy = state != "unhealthy"
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(create_app(worker)), base_url="http://test"
+        ) as client:
+            assert (await client.get("/health/liveliness")).status_code == 200
+            assert (await client.get("/health/readiness")).status_code == 503
+            for path in ("/pre", "/post"):
+                result = await client.post(path, content=b"fixture")
+                assert result.status_code == 503 and result.json() == UNAVAILABLE.wire()
+            assert not guard.prompts and not omni.calls
+
+    asyncio.run(case())
+
+
 def test_image_full_decode_and_bounds(monkeypatch):
     assert checked_image(png()).startswith(b"\x89PNG")
     for data in (b"\x89PNG\r\n\x1a\nfixture", png()[:40]):

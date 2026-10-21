@@ -38,6 +38,8 @@ def test_candidate_has_disjoint_4_3_1_placement_and_private_moderation():
     worker = c["moderation-worker"]
     assert "CUDA_VISIBLE_DEVICES=7 exec" in worker["command"][0]
     assert worker["networks"] == ["models"]
+    # The shim may boot while moderation is unavailable; video admission remains gated.
+    assert "/health/liveliness" in worker["healthcheck"]["test"][-1]
     assert "secrets" not in worker and "ports" not in worker and "env" not in worker
     assert result["models"] == base["models"]  # existing five-disk hardware profile
     assert result["shim"] == base["shim"]  # no public worker route

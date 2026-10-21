@@ -52,18 +52,20 @@ class Guard:
             tokenize=True,
             add_generation_prompt=True,
             return_tensors="pt",
+            return_dict=True,
         )
-        if encoded.shape[1] > 8192:
+        input_length = encoded["input_ids"].shape[1]
+        if input_length > 8192:
             raise ModerationFailure
-        encoded = encoded.to("cuda:0")
+        encoded = encoded.to(self.model.device)
         with torch.inference_mode():
             output = self.model.generate(
-                encoded,
+                **encoded,
                 max_new_tokens=128,
                 do_sample=False,
                 max_time=30,
                 pad_token_id=self.tokenizer.eos_token_id,
-            )[0, encoded.shape[1] :]
+            )[0, input_length:]
         if not len(output) or output[-1].item() != self.tokenizer.eos_token_id:
             raise ModerationFailure
         return guard_verdict(self.tokenizer.decode(output, skip_special_tokens=True))

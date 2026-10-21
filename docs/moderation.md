@@ -11,6 +11,13 @@ contains vLLM/vLLM-Omni 0.28.0, whose CLI has no `--disable-log-requests` option
 stdout/stderr suppression. Images, model packs, 4/3/1 placement and all moderation checks
 are unchanged. The corrected runtime still needs live readiness and generation checks.
 
+The v0.3.1 live boot reached Qwen and MiniMax readiness, but Guard failed its startup
+self-test. Exact-image CPU diagnosis found Transformers 5.14.1 returns `BatchEncoding`
+from `apply_chat_template`, while the adapter assumed a tensor. The corrected adapter
+explicitly requests a dictionary, counts `input_ids`, and forwards the attention mask.
+The packaged-model smoke now exercises this production adapter on a synthetic prompt.
+The worker boot check uses liveness; moderation readiness continues to gate every video.
+
 ## Request flow and decisions
 
 The gateway unconditionally checks every MiniMax `t2va`, `fl2va`, and `i2va` request:
@@ -110,7 +117,9 @@ backend stdout/stderr to `/dev/null`, because exception paths can print prompts 
 request logging disabled. This reduces backend debugging visibility; aggregate health and
 metrics remain available. Neither model output explanations nor transcripts are exported.
 
-Startup exposes liveness independently of readiness, avoiding a gateway/Qwen boot cycle.
+Startup exposes liveness independently of readiness. The worker Docker boot healthcheck
+uses liveness, so unavailable moderation does not prevent the shim from serving Qwen
+or health diagnostics. MiniMax pre/post checks still fail closed until moderation is ready.
 Readiness requires Guard's safe-text self-test and Qwen text/image/audio self-tests. Qwen
 startup is retried; unavailable dependencies never enable generation without moderation.
 The gateway's aggregate `/health` includes worker readiness and returns 503 if it is unavailable;
@@ -132,7 +141,10 @@ docker buildx build --platform linux/amd64 --target test -f images/moderation-wo
 CI checks policy parsing, byte-level gateway behavior, real synthetic H.264/AAC decoding,
 frame/audio coverage, failures, cancellation and cleanup, the rendered placement/network
 policy, and offline image smoke. Tests do not read user credentials/configuration. CPU-only
-tests do not establish the accuracy or latency of either real moderation model.
+tests do not establish the accuracy or latency of either real moderation model. The image
+smoke also runs the packaged Guard tokenizer and generation adapter on a synthetic benign
+prompt using CPU-loaded weights. This catches dependency API incompatibility; production
+startup still requires one CUDA GPU and never falls back to CPU.
 
 After source review, publish the worker with `cloudbuild-moderation.yaml` and the gateway
 with `cloudbuild-gateway.yaml`, submitting an archive of the reviewed commit and `_SOURCE_SHA`.
