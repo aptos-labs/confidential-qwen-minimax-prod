@@ -45,7 +45,7 @@ def render(base: dict[str, Any], gateway: str, worker: str) -> dict[str, Any]:
         raise ValueError("unexpected Qwen stages")
     # Backend error paths may print user inputs even with request logging disabled.
     # Drop stdout/stderr at the process boundary; health/aggregate metrics still work.
-    qwen["command"] = [command.rstrip() + " --disable-log-requests >/dev/null 2>&1"]
+    qwen["command"] = [command.rstrip() + " >/dev/null 2>&1"]
     minimax = containers["vllm-omni-minimax"]
     minimax["command"] = [minimax["command"][0].rstrip() + " >/dev/null 2>&1"]
     runtime["containers"].append(
