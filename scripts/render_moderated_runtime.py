@@ -12,6 +12,7 @@ from typing import Any
 import yaml
 
 ROOT = Path(__file__).resolve().parents[1]
+BASELINE = ROOT / "runtime-baselines/v0.2.1.yml"
 REGISTRY = "us-docker.pkg.dev/aptos-registry/ccs-images-public/"
 
 
@@ -82,9 +83,7 @@ def main() -> None:
     parser.add_argument("--worker", required=True)
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
-    value = render(
-        yaml.safe_load((ROOT / "tinfoil-config.yml").read_text()), args.gateway, args.worker
-    )
+    value = render(yaml.safe_load(BASELINE.read_text()), args.gateway, args.worker)
     with args.output.open("x") as output:
         yaml.safe_dump(value, output, sort_keys=True)
 

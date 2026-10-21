@@ -1,8 +1,9 @@
 # MiniMax moderation
 
-Status: implementation for staging validation. `tinfoil-config.yml` still identifies the
-deployed v0.2.1 release. Do not represent that release as moderated. Generate the new runtime
-only after publishing the tested worker and gateway images, using their actual GAR digests.
+Status: v0.3.0 runtime prepared for live validation. `tinfoil-config.yml` pins the published,
+verified worker and gateway images with the 4/3/1 allocation. Real-model quality and latency
+remain unvalidated until the GPU checks below pass. The immutable unmoderated v0.2.1 baseline
+is retained in `runtime-baselines/v0.2.1.yml`; the renderer always starts from that baseline.
 
 ## Request flow and decisions
 
@@ -139,6 +140,14 @@ python scripts/render_moderated_runtime.py --gateway "$GATEWAY_DIGEST" --worker 
 Review the rendered runtime and verify the fleet export is identical before cutting a new
 signed release. Do not edit an existing signed release or substitute placeholder digests.
 No script here deploys or restarts the host, VM or containers.
+
+For v0.3.0, both images were built from source commit
+`70b8e27d0f198cc9307e551f539b8565bdf39001`. Cloud Build tests, anonymous pulls and final-image
+smoke passed. Google-signed provenance matches the source archive and output digests.
+Provenance occurrences live in the build project `aptos-cloudbuild`, not the registry project
+`aptos-registry`; query Container Analysis in the build project when verifying these images.
+See the README for the build IDs and image references. Deployment for initial measurement
+does not establish that the W6 quality/load requirements have passed.
 
 W6 is required before rollout: benchmark 4/10/15-second clips with 0/1/2 input images under
 normal Qwen text/audio traffic. Compare the 4/3/1 configuration against today's Qwen baseline;

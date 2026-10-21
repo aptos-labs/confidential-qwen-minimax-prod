@@ -329,7 +329,7 @@ def test_tinfoil_runtime_matches_signed_extra_large_2d_v011_shape():
     assert document["memory"] == 524288
     assert document["gpus"] == 8
     assert len(document["models"]) == 2
-    assert len(document["containers"]) == 3
+    assert len(document["containers"]) == 4
 
 
 def test_gateway_has_explicit_egress_for_usage_reporter():

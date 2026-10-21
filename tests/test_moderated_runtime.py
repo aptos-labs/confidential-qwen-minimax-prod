@@ -24,7 +24,7 @@ def test_license_snapshot_matches_recorded_hash():
 
 
 def test_candidate_has_disjoint_4_3_1_placement_and_private_moderation():
-    base = yaml.safe_load((ROOT / "tinfoil-config.yml").read_text())
+    base = yaml.safe_load(render.BASELINE.read_text())
     result = render.render(base, GATEWAY, WORKER)
     assert len(base["containers"]) == 3  # renderer never mutates released baseline
     assert len(result["containers"]) == 4
@@ -51,11 +51,21 @@ def test_candidate_has_disjoint_4_3_1_placement_and_private_moderation():
 )
 def test_renderer_rejects_tags_and_other_repositories(value):
     with pytest.raises(ValueError):
-        render.render(yaml.safe_load((ROOT / "tinfoil-config.yml").read_text()), value, WORKER)
+        render.render(yaml.safe_load(render.BASELINE.read_text()), value, WORKER)
 
 
 def test_renderer_refuses_unexpected_baseline():
-    base = yaml.safe_load((ROOT / "tinfoil-config.yml").read_text())
+    base = yaml.safe_load(render.BASELINE.read_text())
     base["containers"][1]["command"] = ["different server"]
     with pytest.raises(ValueError):
         render.render(base, GATEWAY, WORKER)
+
+
+def test_release_runtime_matches_reviewed_renderer():
+    released = yaml.safe_load((ROOT / "tinfoil-config.yml").read_text())
+    containers = {c["name"]: c for c in released["containers"]}
+    assert released == render.render(
+        yaml.safe_load(render.BASELINE.read_text()),
+        containers["litellm"]["image"],
+        containers["moderation-worker"]["image"],
+    )

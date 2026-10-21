@@ -17,7 +17,7 @@ containers:
       else:
           raise RuntimeError('Video method guard is missing')
     timeout: 10s
-  image: us-docker.pkg.dev/aptos-registry/ccs-images-public/confidential-qwen-minimax-paid-gateway@sha256:a8e08db47e504fc01aee0c56ff8061c8f94ce7c4685d67d8e5676531aff51873
+  image: us-docker.pkg.dev/aptos-registry/ccs-images-public/confidential-qwen-minimax-paid-gateway@sha256:a6b1c77a7adb5447ed53dcbcae73de6533641c034537ae0e65c07454bf7f1e52
   name: litellm
   networks:
   - models
@@ -28,13 +28,13 @@ containers:
   tmpfs:
     /tmp: size=2g,mode=1777,exec
 - command:
-  - |
-    CUDA_VISIBLE_DEVICES=4,5,6,7 exec vllm serve \
+  - |-
+    CUDA_VISIBLE_DEVICES=4,5,6 exec vllm serve \
     /tinfoil/mpk/mpk-146b75f36614f6c597c09c5f7b62acd0a99c4f5d21c31a590fbd6ca68d053acc \
     --omni --trust-remote-code --host=0.0.0.0 --port=8000 \
     --served-model-name qwen3-omni \
     --init-timeout 1800 --stage-init-timeout 900 \
-    --stage-overrides '{"1": {"num_replicas": 2, "devices": "1,2"}, "2": {"num_replicas": 1, "devices": "3"}}'
+    --stage-overrides '{"1": {"num_replicas": 1, "devices": "1"}, "2": {"num_replicas": 1, "devices": "2"}}' --disable-log-requests >/dev/null 2>&1
   entrypoint:
   - /bin/sh
   - -c
@@ -62,7 +62,7 @@ containers:
     /root: size=20g,mode=0700,exec
     /tmp: size=20g,mode=1777,exec
 - command:
-  - CUDA_VISIBLE_DEVICES=0,1,2,3 exec vllm serve /tinfoil/mpk/mpk-87721463756e43f0b64a59975b41e6798f43921cbfd4f69524be59ebb3a893a8/FL2VA --trust-remote-code --host=0.0.0.0 --num-gpus=4 --usp=4 --ring=1 --vae-patch-parallel-size=4 --vae-parallel-mode=tile --vae-use-tiling --port=8001 --omni --served-model-name minimax-h3-fl2va
+  - CUDA_VISIBLE_DEVICES=0,1,2,3 exec vllm serve /tinfoil/mpk/mpk-87721463756e43f0b64a59975b41e6798f43921cbfd4f69524be59ebb3a893a8/FL2VA --trust-remote-code --host=0.0.0.0 --num-gpus=4 --usp=4 --ring=1 --vae-patch-parallel-size=4 --vae-parallel-mode=tile --vae-use-tiling --port=8001 --omni --served-model-name minimax-h3-fl2va >/dev/null 2>&1
   entrypoint:
   - /bin/sh
   - -c
@@ -90,6 +90,32 @@ containers:
   tmpfs:
     /root: size=20g,mode=0700,exec
     /tmp: size=20g,mode=1777,exec
+- command:
+  - CUDA_VISIBLE_DEVICES=7 exec python3 -m moderation_worker
+  entrypoint:
+  - /bin/sh
+  - -c
+  gpus: all
+  healthcheck:
+    interval: 30s
+    start_period: 60m
+    test:
+    - CMD
+    - python3
+    - -c
+    - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health/readiness', timeout=3).close()
+    timeout: 10s
+  image: us-docker.pkg.dev/aptos-registry/ccs-images-public/confidential-qwen-minimax-moderation-worker@sha256:006cd030837b377c7d8918895f0b77bc18832906d9c34f6704972c5719e22218
+  ipc: private
+  name: moderation-worker
+  networks:
+  - models
+  restart: always
+  runtime: nvidia
+  shm_size: 1g
+  tmpfs:
+    /root: size=64m,mode=0700,noexec
+    /tmp: size=2g,mode=1777,noexec
 cpus: 32
 cvm-network:
   inbound-ports:
