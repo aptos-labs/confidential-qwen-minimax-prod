@@ -18,12 +18,12 @@ release is a new tag. Do not reuse an archived tag.
 ## What is attested
 
 `tinfoil-config.yml` is the exact measured runtime the CVM host agent materializes for the
-fleet object. Release `v0.3.2` adds mandatory MiniMax input/output moderation, the private
+fleet object. Release `v0.3.3` adds mandatory MiniMax input/output moderation, the private
 Guard worker, and a 4/3/1 GPU allocation. Model images and packs, hardware shape, and public
 API routes are preserved. This release is for initial live validation; moderation quality
 and latency on GPUs have not yet been established.
 The YAML uses the canonical order emitted after the fleet API's JSON round trip. Its SHA-256 is
-`350640094d2a49c6d0281b5294112b5abe0f0463c8699ca7202bc85f7e1ee6d9`.
+`68ee7c9257f331640d985f9484b86f9a17f08b68b734d40f52018b6aeae9fa90`.
 
 A gateway fronts both models and attempts CCS admission before calling a model
 server. When the admission route returns 404, the gateway uses the same usage-only
@@ -52,6 +52,27 @@ config, external config, and two model volumes).
   time. This release pins the verified GAR gateway and worker images below and the existing
   `ghcr.io/aptos-labs/confidential-qwen-minimax-qwen-metered` digest. A rebuilt image
   requires its own verification and a new runtime release.
+
+## Startup diagnostics for v0.3.3
+
+The live v0.3.2 release reached Qwen and MiniMax readiness, but moderation remained
+unavailable. This release adds bounded startup-stage diagnostics to distinguish Guard
+initialization from the worker's Omni self-tests. It preserves fail-closed pre/post checks,
+GPU placement, model images and packs, and private networking. Live video validation and
+latency measurement remain pending.
+
+Both images were built from `ba3fe5c00755c13d0fd9d7c17c09ed5058c39d3e` and published to
+`us-docker.pkg.dev/aptos-registry/ccs-images-public`:
+
+| Image | Cloud Build | Digest |
+|---|---|---|
+| `confidential-qwen-minimax-paid-gateway` | [0fe0385d-5706-45c1-aad1-59dc9ed94128](https://console.cloud.google.com/cloud-build/builds/0fe0385d-5706-45c1-aad1-59dc9ed94128?project=352118355028) | `sha256:32b44879dda148a4f727053f8157cb51bb70bb7ae91ff82048d63f258619ae4f` |
+| `confidential-qwen-minimax-moderation-worker` | [f4c07150-e883-40bf-9f7a-6a601099c531](https://console.cloud.google.com/cloud-build/builds/f4c07150-e883-40bf-9f7a-6a601099c531?project=352118355028) | `sha256:a60441af96de9cecf5ec7866513f319c33c7f263b82a925587dda8e1b2ebbf0b` |
+
+Both builds passed tests, offline smoke, and anonymous published-digest pulls. Independent
+verification checked the OCI source/platform labels and Google-signed provenance against
+source archive SHA-256 `1a472cf6f4bdca078755e59d54348f0f2a8859170f67619d250980cc4cf351d8`.
+These checks do not establish live GPU readiness or moderation quality.
 
 ## Worker update for v0.3.2
 

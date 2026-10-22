@@ -17,7 +17,7 @@ containers:
       else:
           raise RuntimeError('Video method guard is missing')
     timeout: 10s
-  image: us-docker.pkg.dev/aptos-registry/ccs-images-public/confidential-qwen-minimax-paid-gateway@sha256:a6b1c77a7adb5447ed53dcbcae73de6533641c034537ae0e65c07454bf7f1e52
+  image: us-docker.pkg.dev/aptos-registry/ccs-images-public/confidential-qwen-minimax-paid-gateway@sha256:32b44879dda148a4f727053f8157cb51bb70bb7ae91ff82048d63f258619ae4f
   name: litellm
   networks:
   - models
@@ -105,7 +105,7 @@ containers:
     - -c
     - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health/liveliness', timeout=3).close()
     timeout: 10s
-  image: us-docker.pkg.dev/aptos-registry/ccs-images-public/confidential-qwen-minimax-moderation-worker@sha256:fa0948b491ca4b46d2128b592f6a02882176e5863f772fbd779930cf9ae6227a
+  image: us-docker.pkg.dev/aptos-registry/ccs-images-public/confidential-qwen-minimax-moderation-worker@sha256:a60441af96de9cecf5ec7866513f319c33c7f263b82a925587dda8e1b2ebbf0b
   ipc: private
   name: moderation-worker
   networks:
