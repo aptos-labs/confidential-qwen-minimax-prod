@@ -11,7 +11,13 @@ import wave
 from collections.abc import AsyncIterator
 from pathlib import Path
 
-from paid_gateway.moderation_contract import ALLOW, UNAVAILABLE, ModerationFailure, Verdict
+from paid_gateway.moderation_contract import (
+    ALLOW,
+    STARTUP_STAGES,
+    UNAVAILABLE,
+    ModerationFailure,
+    Verdict,
+)
 from paid_gateway.protocol import BODY_LIMIT, OUTPUT_LIMIT
 from paid_gateway.video_request import parse_video
 from PIL import Image
@@ -30,6 +36,23 @@ class Worker:
         self.omni = omni or Omni()
         self.ready = False
         self.busy = False
+        self.startup_stage = "starting"
+        self.startup_failed = False
+
+    def startup_health(self) -> dict[str, str | bool]:
+        ready = self.ready and self.guard.healthy
+        stage = self.startup_stage
+        if stage == "starting":
+            stage = getattr(self.guard, "startup_stage", "starting")
+        if self.ready:
+            stage = "ready" if ready else "runtime_failure"
+        if stage not in STARTUP_STAGES:
+            stage = "starting"
+        return {
+            "status": "ready" if ready else "unavailable",
+            "stage": stage,
+            "failed": self.startup_failed or (self.ready and not self.guard.healthy),
+        }
 
     async def pre(self, body: bytes, content_type: str) -> Verdict:
         video = parse_video(body, content_type)
@@ -144,6 +167,7 @@ class Worker:
         try:
             await asyncio.to_thread(self.guard.load)
             if await self.guard.check("Draw a red square.") != ALLOW:
+                self.startup_failed = True
                 return
             png = io.BytesIO()
             Image.new("RGB", (32, 32), "red").save(png, "PNG")
@@ -156,18 +180,28 @@ class Worker:
             # Qwen may boot after this container. Retry readiness, never requests.
             while self.guard.healthy:
                 try:
-                    for content in (
-                        [text_part("Draw a red square.")],
-                        [text_part("Classify this image."), image_part(png.getvalue())],
-                        [text_part("Classify this audio."), audio_part(wav.getvalue())],
+                    for stage, content in (
+                        ("omni_text", [text_part("Draw a red square.")]),
+                        (
+                            "omni_image",
+                            [text_part("Classify this image."), image_part(png.getvalue())],
+                        ),
+                        (
+                            "omni_audio",
+                            [text_part("Classify this audio."), audio_part(wav.getvalue())],
+                        ),
                     ):
+                        self.startup_stage = stage
                         if await self.omni.classify(content) != ALLOW:
                             raise ModerationFailure
                     self.ready = True
+                    self.startup_failed = False
                     return
                 except Exception:
+                    self.startup_failed = True
                     await asyncio.sleep(15)
         except Exception:
+            self.startup_failed = True
             self.ready = False
 
 
@@ -194,12 +228,17 @@ def create_app(worker: Worker | None = None) -> Starlette:
             {"status": "ready" if ok else "unavailable"}, status_code=200 if ok else 503
         )
 
+    async def startup(request: Request) -> JSONResponse:
+        health = worker.startup_health()
+        return JSONResponse(health, status_code=200 if health["status"] == "ready" else 503)
+
     return Starlette(
         routes=[
             Route("/pre", worker.check, methods=["POST"]),
             Route("/post", worker.check, methods=["POST"]),
             Route("/health/liveliness", alive),
             Route("/health/readiness", ready),
+            Route("/health/startup", startup),
         ],
         lifespan=lifespan,
     )

@@ -169,3 +169,43 @@ def test_aggregate_health_reports_unavailable_guard():
             await gateway.close()
 
     asyncio.run(case())
+
+
+@pytest.mark.parametrize(
+    "fault",
+    ["valid", "ready", "unknown", "extra", "contradiction", "failed_ready", "large", "timeout"],
+)
+def test_startup_health_only_exports_allowlisted_diagnostics(fault):
+    async def case():
+        async def worker(request):
+            assert request.url.path == "/health/startup"
+            value = {"status": "unavailable", "stage": "weights_load", "failed": True}
+            status = 503
+            if fault in {"ready", "failed_ready"}:
+                value = {"status": "ready", "stage": "ready", "failed": fault == "failed_ready"}
+                status = 200
+            elif fault == "unknown":
+                value["stage"] = "private prompt or exception text"
+            elif fault == "extra":
+                value["exception"] = "private"
+            elif fault == "contradiction":
+                status = 200
+            elif fault == "large":
+                return httpx.Response(
+                    503, content=b"x" * 1025, headers={"content-type": "application/json"}
+                )
+            elif fault == "timeout":
+                raise httpx.ReadTimeout("private")
+            return httpx.Response(status, json=value)
+
+        async with httpx.AsyncClient(transport=httpx.MockTransport(worker)) as client:
+            result = await ModerationClient(client).startup_health()
+        expected = (
+            (False, "weights_load", True) if fault == "valid" else (False, "unreachable", False)
+        )
+        if fault == "ready":
+            expected = (True, "ready", False)
+        assert result == expected
+        assert "private" not in str(result)
+
+    asyncio.run(case())

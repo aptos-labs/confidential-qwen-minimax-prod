@@ -14,6 +14,26 @@ POLICY_CATEGORIES = AUP_CATEGORIES | {
     "guard_controversial",
 }
 FAILURE = "moderation_unavailable"
+STARTUP_STAGES = frozenset(
+    {
+        "starting",
+        "cuda_availability",
+        "cuda_count",
+        "tokenizer_load",
+        "weights_load",
+        "guard_tokenize",
+        "guard_transfer",
+        "guard_generate",
+        "guard_completion",
+        "guard_verdict",
+        "guard_complete",
+        "omni_text",
+        "omni_image",
+        "omni_audio",
+        "ready",
+        "runtime_failure",
+    }
+)
 
 
 class ModerationFailure(Exception):

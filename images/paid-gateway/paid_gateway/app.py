@@ -462,8 +462,8 @@ class PaidGateway:
         return list(await asyncio.gather(*(fetch(base) for base in self.observability_targets)))
 
     async def health(self, scope: Scope, receive: Receive, send: Send) -> None:
-        results, moderation_ready = await asyncio.gather(
-            self._backend_get("/health"), self.moderation.ready()
+        results, moderation_health = await asyncio.gather(
+            self._backend_get("/health"), self.moderation.startup_health()
         )
         backends = [
             {
@@ -472,7 +472,15 @@ class PaidGateway:
             }
             for endpoint, result in zip(self.observability_targets, results, strict=True)
         ]
-        backends.append({"endpoint": WORKER_URL, "status": 200 if moderation_ready else 503})
+        moderation_ready, startup_stage, startup_failed = moderation_health
+        backends.append(
+            {
+                "endpoint": WORKER_URL,
+                "status": 200 if moderation_ready else 503,
+                "startup_stage": startup_stage,
+                "startup_failed": startup_failed,
+            }
+        )
         healthy = all(item["status"] == 200 for item in backends)
         await JSONResponse(
             {"status": "ok" if healthy else "unhealthy", "backends": backends},

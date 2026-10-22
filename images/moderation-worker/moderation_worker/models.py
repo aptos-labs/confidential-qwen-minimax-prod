@@ -20,19 +20,26 @@ class Guard:
         self.healthy = False
         self.model: Any = None
         self.tokenizer: Any = None
+        self.startup_stage = "starting"
 
     def load(self) -> None:
         import torch
         from transformers import AutoModelForCausalLM, AutoTokenizer
 
-        if not torch.cuda.is_available() or torch.cuda.device_count() != 1:
+        self.startup_stage = "cuda_availability"
+        if not torch.cuda.is_available():
+            raise ModerationFailure
+        self.startup_stage = "cuda_count"
+        if torch.cuda.device_count() != 1:
             raise ModerationFailure
         torch.set_num_threads(2)
+        self.startup_stage = "tokenizer_load"
         self.tokenizer = AutoTokenizer.from_pretrained(
             MODEL_DIR,
             local_files_only=True,
             trust_remote_code=False,
         )
+        self.startup_stage = "weights_load"
         self.model = AutoModelForCausalLM.from_pretrained(
             MODEL_DIR,
             local_files_only=True,
@@ -47,6 +54,7 @@ class Guard:
 
         if not self.healthy:
             raise ModerationFailure
+        self.startup_stage = "guard_tokenize"
         encoded = self.tokenizer.apply_chat_template(
             [{"role": "user", "content": prompt}],
             tokenize=True,
@@ -57,7 +65,9 @@ class Guard:
         input_length = encoded["input_ids"].shape[1]
         if input_length > 8192:
             raise ModerationFailure
+        self.startup_stage = "guard_transfer"
         encoded = encoded.to(self.model.device)
+        self.startup_stage = "guard_generate"
         with torch.inference_mode():
             output = self.model.generate(
                 **encoded,
@@ -66,9 +76,13 @@ class Guard:
                 max_time=30,
                 pad_token_id=self.tokenizer.eos_token_id,
             )[0, input_length:]
+        self.startup_stage = "guard_completion"
         if not len(output) or output[-1].item() != self.tokenizer.eos_token_id:
             raise ModerationFailure
-        return guard_verdict(self.tokenizer.decode(output, skip_special_tokens=True))
+        self.startup_stage = "guard_verdict"
+        verdict = guard_verdict(self.tokenizer.decode(output, skip_special_tokens=True))
+        self.startup_stage = "guard_complete"
+        return verdict
 
     async def check(self, prompt: str) -> Verdict:
         task = asyncio.create_task(asyncio.to_thread(self._check, prompt))
