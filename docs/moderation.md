@@ -1,6 +1,6 @@
 # MiniMax moderation
 
-Status: v0.3.3 diagnostic runtime prepared for live validation. `tinfoil-config.yml` pins the published,
+Status: v0.3.4 Triton cache fix prepared for live validation. `tinfoil-config.yml` pins the published,
 verified worker and gateway images with the 4/3/1 allocation. Real-model quality and latency
 remain unvalidated until the GPU checks below pass. The immutable unmoderated v0.2.1 baseline
 is retained in `runtime-baselines/v0.2.1.yml`; the renderer always starts from that baseline.
@@ -22,6 +22,16 @@ The v0.3.2 live boot reached Qwen and MiniMax readiness, but moderation remained
 unavailable. v0.3.3 adds fixed startup-stage diagnostics to the worker and aggregate health
 to identify the remaining failure. It does not change policy, deadlines, or GPU placement.
 No moderated video generation or post-check latency measurement has succeeded yet.
+
+The v0.3.3 GPU traceback identified a Triton shared-library load from the `noexec` `/root`
+tmpfs. PyTorch 2.13.0+cu130 uses Triton even for the eager Qwen3 rotary-embedding float
+matrix multiplication; CPU-only smoke does not exercise this path. v0.3.4 sets
+`TRITON_CACHE_DIR=/var/cache/moderation/triton` on a separate 256 MiB executable tmpfs
+(`rw,size=256m,mode=0700,exec,nosuid,nodev`). The cache is private and ephemeral. `/root`
+and `/tmp` retain `noexec`, and the container root remains read-only. The exact published
+worker passed its real Guard self-test on an H200 in the existing CVM with these
+restrictions and no network. Images, placement, and mandatory pre/post checks are unchanged.
+This GPU startup result does not establish end-to-end generation latency or policy quality.
 
 ## Request flow and decisions
 

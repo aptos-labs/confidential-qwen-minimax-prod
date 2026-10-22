@@ -37,6 +37,12 @@ def test_candidate_has_disjoint_4_3_1_placement_and_private_moderation():
     assert ">/dev/null 2>&1" in qwen
     worker = c["moderation-worker"]
     assert "CUDA_VISIBLE_DEVICES=7 exec" in worker["command"][0]
+    assert "TRITON_CACHE_DIR=/var/cache/moderation/triton " in worker["command"][0]
+    assert worker["tmpfs"] == {
+        "/tmp": "size=2g,mode=1777,noexec",
+        "/root": "size=64m,mode=0700,noexec",
+        "/var/cache/moderation": "rw,size=256m,mode=0700,exec,nosuid,nodev",
+    }
     assert worker["networks"] == ["models"]
     # The shim may boot while moderation is unavailable; video admission remains gated.
     assert "/health/liveliness" in worker["healthcheck"]["test"][-1]
