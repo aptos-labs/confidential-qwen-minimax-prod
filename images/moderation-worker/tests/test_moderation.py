@@ -462,3 +462,31 @@ def test_duplicate_multipart_parameter_rejected():
     body = form().replace(b'name="prompt"', b'name="prompt"; name="negative_prompt"')
     with pytest.raises(GatewayError):
         parse_video(body, "multipart/form-data; boundary=test")
+
+
+@pytest.mark.parametrize("stage", ["cuda_availability", "weights_load", "guard_generate"])
+def test_startup_failure_retains_only_fixed_stage(stage):
+    async def case():
+        class StartupGuard(FakeGuard):
+            def load(self):
+                self.startup_stage = stage
+                if stage != "guard_generate":
+                    raise RuntimeError("private detail")
+
+            async def check(self, prompt):
+                raise RuntimeError("private detail")
+
+        worker = Worker(StartupGuard(), FakeOmni())
+        await worker.initialize()
+        assert worker.startup_health() == {"status": "unavailable", "stage": stage, "failed": True}
+        async with httpx.AsyncClient(
+            transport=httpx.ASGITransport(create_app(worker)), base_url="http://test"
+        ) as client:
+            health = await client.get("/health/startup")
+            assert health.status_code == 503
+            assert "private" not in health.text
+            assert (await client.get("/health/readiness")).status_code == 503
+            for path in ("/pre", "/post"):
+                assert (await client.post(path, content=b"fixture")).json() == UNAVAILABLE.wire()
+
+    asyncio.run(case())

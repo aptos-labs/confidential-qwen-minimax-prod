@@ -124,6 +124,11 @@ Readiness requires Guard's safe-text self-test and Qwen text/image/audio self-te
 startup is retried; unavailable dependencies never enable generation without moderation.
 The gateway's aggregate `/health` includes worker readiness and returns 503 if it is unavailable;
 the gateway's boot liveness remains independent of model/worker readiness.
+The private `/health/startup` endpoint and gateway aggregate health expose only an
+allowlisted startup stage and a failure boolean. Stages distinguish CUDA discovery,
+weight loading, Guard tokenization/generation/verdict parsing, and Omni text/image/audio
+self-tests. No exception messages, model verdict text, prompts, or media enter these
+diagnostics. The existing readiness and pre/post verdict contracts are unchanged.
 One worker request runs at a time; overload returns a fixed operational block. Default
 pre/post deadlines are 110/230 seconds in the worker and 120/240 in the gateway, bounded
 by the admission deadline. These are provisional limits to tune in W6.
