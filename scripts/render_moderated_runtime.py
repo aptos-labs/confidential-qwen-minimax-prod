@@ -57,10 +57,18 @@ def render(base: dict[str, Any], gateway: str, worker: str) -> dict[str, Any]:
             "gpus": "all",
             "ipc": "private",
             "entrypoint": ["/bin/sh", "-c"],
-            "command": ["CUDA_VISIBLE_DEVICES=7 exec python3 -m moderation_worker"],
+            "command": [
+                "TRITON_CACHE_DIR=/var/cache/moderation/triton "
+                "CUDA_VISIBLE_DEVICES=7 exec python3 -m moderation_worker"
+            ],
             "restart": "always",
             "shm_size": "1g",
-            "tmpfs": {"/tmp": "size=2g,mode=1777,noexec", "/root": "size=64m,mode=0700,noexec"},
+            "tmpfs": {
+                "/tmp": "size=2g,mode=1777,noexec",
+                "/root": "size=64m,mode=0700,noexec",
+                # PyTorch eager CUDA ops load Triton-generated shared libraries.
+                "/var/cache/moderation": "rw,size=256m,mode=0700,exec,nosuid,nodev",
+            },
             "healthcheck": {
                 "test": [
                     "CMD",

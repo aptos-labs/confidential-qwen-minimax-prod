@@ -18,12 +18,12 @@ release is a new tag. Do not reuse an archived tag.
 ## What is attested
 
 `tinfoil-config.yml` is the exact measured runtime the CVM host agent materializes for the
-fleet object. Release `v0.3.3` adds mandatory MiniMax input/output moderation, the private
+fleet object. Release `v0.3.4` includes mandatory MiniMax input/output moderation, the private
 Guard worker, and a 4/3/1 GPU allocation. Model images and packs, hardware shape, and public
 API routes are preserved. This release is for initial live validation; moderation quality
 and latency on GPUs have not yet been established.
 The YAML uses the canonical order emitted after the fleet API's JSON round trip. Its SHA-256 is
-`68ee7c9257f331640d985f9484b86f9a17f08b68b734d40f52018b6aeae9fa90`.
+`575bd0b450e00ecccaabd19bc8f8d56d5cd50cf81a1fa1b472761f0af48e6540`.
 
 A gateway fronts both models and attempts CCS admission before calling a model
 server. When the admission route returns 404, the gateway uses the same usage-only
@@ -52,6 +52,19 @@ config, external config, and two model volumes).
   time. This release pins the verified GAR gateway and worker images below and the existing
   `ghcr.io/aptos-labs/confidential-qwen-minimax-qwen-metered` digest. A rebuilt image
   requires its own verification and a new runtime release.
+
+## Guard GPU startup fix for v0.3.4
+
+Guard's CUDA self-test in v0.3.3 failed because PyTorch's eager Qwen3 rotary-embedding
+operation loads a Triton-generated shared library from `/root/.triton`, while `/root` is
+mounted `noexec`. v0.3.4 sets `TRITON_CACHE_DIR=/var/cache/moderation/triton` and adds a
+private 256 MiB executable tmpfs there, with `nosuid,nodev`. `/root` and media scratch
+remain `noexec`; the container root remains read-only.
+
+The same published worker image passed its real Guard self-test (`allow / none`) on the
+existing H200 CVM with this cache and the production filesystem restrictions. This is a
+runtime-only change: both v0.3.3 image digests below are reused. Full production readiness,
+moderated video generation, and post-generation latency still require live validation.
 
 ## Startup diagnostics for v0.3.3
 
