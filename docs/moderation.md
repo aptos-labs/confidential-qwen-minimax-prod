@@ -1,6 +1,6 @@
 # MiniMax moderation
 
-Status: v0.3.2 runtime prepared for live validation. `tinfoil-config.yml` pins the published,
+Status: v0.3.3 diagnostic runtime prepared for live validation. `tinfoil-config.yml` pins the published,
 verified worker and gateway images with the 4/3/1 allocation. Real-model quality and latency
 remain unvalidated until the GPU checks below pass. The immutable unmoderated v0.2.1 baseline
 is retained in `runtime-baselines/v0.2.1.yml`; the renderer always starts from that baseline.
@@ -17,6 +17,11 @@ from `apply_chat_template`, while the adapter assumed a tensor. The corrected ad
 explicitly requests a dictionary, counts `input_ids`, and forwards the attention mask.
 The packaged-model smoke now exercises this production adapter on a synthetic prompt.
 The worker boot check uses liveness; moderation readiness continues to gate every video.
+
+The v0.3.2 live boot reached Qwen and MiniMax readiness, but moderation remained
+unavailable. v0.3.3 adds fixed startup-stage diagnostics to the worker and aggregate health
+to identify the remaining failure. It does not change policy, deadlines, or GPU placement.
+No moderated video generation or post-check latency measurement has succeeded yet.
 
 ## Request flow and decisions
 
