@@ -1,8 +1,9 @@
 # MiniMax moderation
 
-Status: v0.3.4 Triton cache fix prepared for live validation. `tinfoil-config.yml` pins the published,
-verified worker and gateway images with the 4/3/1 allocation. Real-model quality and latency
-remain unvalidated until the GPU checks below pass. The immutable unmoderated v0.2.1 baseline
+Status: v0.3.4 passed live startup and authenticated text/first-frame/first-last-frame video
+checks. The configurable-stage gateway update below is awaiting image publication and runtime
+release. `tinfoil-config.yml` retains the verified v0.3.4 images with the 4/3/1 allocation.
+The broader quality/load benchmark remains outstanding. The immutable unmoderated v0.2.1 baseline
 is retained in `runtime-baselines/v0.2.1.yml`; the renderer always starts from that baseline.
 
 The v0.3.0 live boot reached MiniMax readiness but Qwen failed startup. The exact Qwen image
@@ -21,7 +22,7 @@ The worker boot check uses liveness; moderation readiness continues to gate ever
 The v0.3.2 live boot reached Qwen and MiniMax readiness, but moderation remained
 unavailable. v0.3.3 adds fixed startup-stage diagnostics to the worker and aggregate health
 to identify the remaining failure. It does not change policy, deadlines, or GPU placement.
-No moderated video generation or post-check latency measurement has succeeded yet.
+At that release, moderated video generation and post-check latency were still unvalidated.
 
 The v0.3.3 GPU traceback identified a Triton shared-library load from the `noexec` `/root`
 tmpfs. PyTorch 2.13.0+cu130 uses Triton even for the eager Qwen3 rotary-embedding float
@@ -31,14 +32,49 @@ matrix multiplication; CPU-only smoke does not exercise this path. v0.3.4 sets
 and `/tmp` retain `noexec`, and the container root remains read-only. The exact published
 worker passed its real Guard self-test on an H200 in the existing CVM with these
 restrictions and no network. Images, placement, and mandatory pre/post checks are unchanged.
-This GPU startup result does not establish end-to-end generation latency or policy quality.
+The production rollout subsequently passed Guard/Omni startup and authenticated video checks.
+Two five-second clips completed in 119.5 seconds (text) and 106.3 seconds (first/last images);
+approximate post-generation tails were 6–13 seconds including buffering and delivery. A later
+single-image request completed in 95.8 seconds. These smoke checks do not establish policy
+quality or load performance. Reported output false positives motivate the configurable stages.
 
 ## Request flow and decisions
 
-The gateway unconditionally checks every MiniMax `t2va`, `fl2va`, and `i2va` request:
-admission → pre-check → generation → MP4 buffer → post-check → output checkpoint/settlement
-→ response. The admission-404 billing fallback does not skip either moderation check.
-There is no runtime moderation-disable flag. The worker is required for all video requests.
+The gateway supports independently configured input and output moderation:
+admission → enabled pre-check → generation → MP4 buffer → enabled post-check → output
+checkpoint/settlement → response. The admission-404 billing fallback preserves the configured
+checks. Enabled checks fail closed on errors/timeouts and return policy blocks as before.
+
+### Stage configuration
+
+These are operator-owned, CVM-wide startup environment settings, not request parameters:
+
+| Setting | Default | Meaning |
+|---|---|---|
+| `CCS_MODERATION_PRE_ENABLED` | `true` | Check the prompt, negative prompt, and uploaded images |
+| `CCS_MODERATION_POST_ENABLED` | `true` | Decode and classify generated frames and audio |
+
+Only literal lowercase `true` and `false` are accepted. Missing values retain both checks;
+empty or malformed values abort startup before clients are created. The requested production
+configuration is pre=`true`, post=`false`. Configuration is captured once at startup, so
+changing a value requires a gateway restart. Request headers/form fields cannot override it.
+
+The fleet runtime must expose these two names in the gateway container's `env` list; set
+their values in the protected fleet `spec.external.env` map. These external values are
+operator-controlled and are not part of the measured runtime hash. Changing exposed values
+does not require an image rebuild. The gateway `/health` response reports the effective
+`moderation: {pre_enabled, post_enabled}` flags. If either stage is enabled, worker readiness
+still gates aggregate health. With both disabled, health does not call or require the worker.
+The worker's own Guard/Omni startup self-tests and private pre/post routes remain available.
+
+Disabling the post-check skips output content classification and the worker's full media
+decode. Gateway authentication, admission, MP4 content-type/size/duration validation, buffering,
+checkpointing, and settlement still apply. It does not turn the endpoint into a streaming
+renderer or remove generation time.
+
+MiniMax uses `task=fl2va` with one `input_reference` for a starting image, or two
+`input_references` for first/last images. `task=i2va` is currently accepted by the gateway but
+rejected by the backend; use `fl2va` for single-image requests.
 
 The pre-check runs Qwen3Guard-Gen-0.6B on the complete prompt using its native chat template.
 Every Unsafe or Controversial severity blocks. Sexual labels block regardless of severity.
@@ -134,10 +170,10 @@ metrics remain available. Neither model output explanations nor transcripts are 
 
 Startup exposes liveness independently of readiness. The worker Docker boot healthcheck
 uses liveness, so unavailable moderation does not prevent the shim from serving Qwen
-or health diagnostics. MiniMax pre/post checks still fail closed until moderation is ready.
+or health diagnostics. Enabled MiniMax pre/post checks still fail closed until moderation is ready.
 Readiness requires Guard's safe-text self-test and Qwen text/image/audio self-tests. Qwen
-startup is retried; unavailable dependencies never enable generation without moderation.
-The gateway's aggregate `/health` includes worker readiness and returns 503 if it is unavailable;
+startup is retried; unavailable dependencies never bypass an enabled moderation check.
+When either check is enabled, aggregate `/health` includes worker readiness and returns 503 if it is unavailable;
 the gateway's boot liveness remains independent of model/worker readiness.
 The private `/health/startup` endpoint and gateway aggregate health expose only an
 allowlisted startup stage and a failure boolean. Stages distinguish CUDA discovery,

@@ -6,7 +6,7 @@ from fractions import Fraction
 import httpx
 import pytest
 from paid_gateway.app import PaidGateway
-from paid_gateway.moderation import ModerationClient
+from paid_gateway.moderation import ModerationClient, ModerationConfig
 from paid_gateway.moderation_contract import ALLOW
 from test_gateway import KEY, FakeBilling, downstream, form
 
@@ -207,5 +207,180 @@ def test_startup_health_only_exports_allowlisted_diagnostics(fault):
             expected = (True, "ready", False)
         assert result == expected
         assert "private" not in str(result)
+
+    asyncio.run(case())
+
+
+def test_moderation_config_defaults_and_independent_controls():
+    assert ModerationConfig.from_env({}) == ModerationConfig(True, True)
+    assert ModerationConfig.from_env({"CCS_MODERATION_POST_ENABLED": "false"}) == (
+        ModerationConfig(True, False)
+    )
+    assert ModerationConfig.from_env({"CCS_MODERATION_PRE_ENABLED": "false"}) == (
+        ModerationConfig(False, True)
+    )
+
+
+@pytest.mark.parametrize("name", ["CCS_MODERATION_PRE_ENABLED", "CCS_MODERATION_POST_ENABLED"])
+@pytest.mark.parametrize("value", ["", "0", "1", "False", "off", " false", "private-invalid"])
+def test_invalid_moderation_config_aborts_before_clients(name, value, monkeypatch):
+    monkeypatch.setenv(name, value)
+
+    def forbidden():
+        raise AssertionError("must reject configuration before creating clients")
+
+    monkeypatch.setattr("paid_gateway.app.production_billing", forbidden)
+    with pytest.raises(ValueError, match=name) as error:
+        PaidGateway(downstream)
+    assert "private-invalid" not in str(error.value)
+
+
+@pytest.mark.parametrize(
+    "pre_enabled,post_enabled", [(True, True), (True, False), (False, True), (False, False)]
+)
+@pytest.mark.parametrize("billing_mode", [None, "absent"])
+def test_configured_stages_preserve_admission_and_video_delivery(
+    pre_enabled, post_enabled, billing_mode, monkeypatch
+):
+    async def case():
+        order = []
+
+        async def classifier(request):
+            order.append(request.url.path)
+            assert "authorization" not in request.headers
+            return httpx.Response(200, json=ALLOW.wire())
+
+        async def model(request):
+            order.append("generate")
+            return httpx.Response(
+                200, content=b"original video", headers={"content-type": "video/mp4"}
+            )
+
+        billing = FakeBilling(billing_mode)
+        monkeypatch.setenv("CCS_MODERATION_PRE_ENABLED", str(pre_enabled).lower())
+        monkeypatch.setenv("CCS_MODERATION_POST_ENABLED", str(post_enabled).lower())
+        monkeypatch.setattr(
+            "test_gateway.maximum",
+            lambda _: {
+                "model": "minimax-h3-fl2va",
+                "meter": {
+                    "kind": "generated_video_seconds",
+                    "usage": {"numerator": 15, "denominator": 1},
+                },
+            },
+        )
+        gateway = PaidGateway(
+            downstream,
+            billing,
+            httpx.AsyncClient(transport=httpx.MockTransport(model)),
+            ModerationClient(httpx.AsyncClient(transport=httpx.MockTransport(classifier))),
+        )
+        # Settings are captured at startup, never re-read from requests or environment.
+        monkeypatch.setenv("CCS_MODERATION_PRE_ENABLED", str(not pre_enabled).lower())
+        monkeypatch.setenv("CCS_MODERATION_POST_ENABLED", str(not post_enabled).lower())
+        monkeypatch.setattr("paid_gateway.app.mp4_duration", lambda _: Fraction(4))
+        try:
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(gateway), base_url="https://test"
+            ) as client:
+                body = form([("model", "minimax-h3-fl2va"), ("prompt", "fixture")])
+                headers = {"Content-Type": "multipart/form-data; boundary=fixture-boundary"}
+                denied = await client.post("/v1/videos/sync", content=body, headers=headers)
+                assert denied.status_code == 401 and not order and not billing.calls
+                headers["Authorization"] = "Bearer " + KEY
+                result = await client.post("/v1/videos/sync", content=body, headers=headers)
+            assert result.status_code == 200 and result.content == b"original video"
+            assert order == (["/pre"] if pre_enabled else []) + ["generate"] + (
+                ["/post"] if post_enabled else []
+            )
+            assert [op for op, _ in billing.calls] == (
+                ["admit"] if billing_mode == "absent" else ["admit", "checkpoint", "settle"]
+            )
+            if billing_mode is None:
+                assert billing.calls[-1][1]["reason"] == "completed"
+        finally:
+            await gateway.close()
+
+    asyncio.run(case())
+
+
+@pytest.mark.parametrize("fault", ["block", "timeout", "invalid"])
+def test_precheck_still_blocks_with_postcheck_disabled(fault):
+    async def case():
+        calls = []
+
+        async def classifier(request):
+            calls.append(request.url.path)
+            if fault == "timeout":
+                raise httpx.ReadTimeout("private")
+            if fault == "invalid":
+                return httpx.Response(200, text="private")
+            return httpx.Response(200, json={"decision": "block", "category": "sexual_content"})
+
+        async def model(request):
+            raise AssertionError("blocked input reached generation")
+
+        gateway = PaidGateway(
+            downstream,
+            FakeBilling("absent"),
+            httpx.AsyncClient(transport=httpx.MockTransport(model)),
+            ModerationClient(httpx.AsyncClient(transport=httpx.MockTransport(classifier))),
+            ModerationConfig(True, False),
+        )
+        try:
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(gateway), base_url="https://test"
+            ) as client:
+                result = await client.post(
+                    "/v1/videos/sync",
+                    content=form([("model", "minimax-h3-fl2va"), ("prompt", "fixture")]),
+                    headers={
+                        "Authorization": "Bearer " + KEY,
+                        "Content-Type": "multipart/form-data; boundary=fixture-boundary",
+                        # Request headers cannot override the operator's startup config.
+                        "CCS_MODERATION_PRE_ENABLED": "false",
+                    },
+                )
+            assert result.status_code == (400 if fault == "block" else 503)
+            assert calls == ["/pre"] and "video/mp4" not in result.headers["content-type"]
+        finally:
+            await gateway.close()
+
+    asyncio.run(case())
+
+
+@pytest.mark.parametrize(
+    "pre_enabled,post_enabled", [(True, True), (True, False), (False, True), (False, False)]
+)
+def test_health_only_requires_worker_for_enabled_stages(pre_enabled, post_enabled):
+    async def case():
+        calls = []
+
+        async def worker(request):
+            calls.append(request.url.path)
+            raise httpx.ConnectError("unavailable")
+
+        gateway = PaidGateway(
+            downstream,
+            FakeBilling("absent"),
+            httpx.AsyncClient(transport=httpx.MockTransport(lambda _: httpx.Response(200))),
+            ModerationClient(httpx.AsyncClient(transport=httpx.MockTransport(worker))),
+            ModerationConfig(pre_enabled, post_enabled),
+        )
+        try:
+            async with httpx.AsyncClient(
+                transport=httpx.ASGITransport(gateway), base_url="https://test"
+            ) as client:
+                response = await client.get("/health")
+            required = pre_enabled or post_enabled
+            assert response.status_code == (503 if required else 200)
+            assert calls == (["/health/startup"] if required else [])
+            assert len(response.json()["backends"]) == (3 if required else 2)
+            assert response.json()["moderation"] == {
+                "pre_enabled": pre_enabled,
+                "post_enabled": post_enabled,
+            }
+        finally:
+            await gateway.close()
 
     asyncio.run(case())

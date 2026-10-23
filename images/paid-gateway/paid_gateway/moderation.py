@@ -1,8 +1,11 @@
-"""Mandatory moderation calls; no environment switch or absent-route bypass."""
+"""Operator-configured moderation stages with fail-closed calls when enabled."""
 
 from __future__ import annotations
 
 import asyncio
+import os
+from collections.abc import Mapping
+from dataclasses import dataclass
 
 import httpx
 
@@ -12,6 +15,31 @@ from .moderation_contract import FAILURE, STARTUP_STAGES, ModerationFailure, Ver
 WORKER_URL = "http://moderation-worker:8090"
 PRE_TIMEOUT = 120
 POST_TIMEOUT = 240
+
+
+@dataclass(frozen=True)
+class ModerationConfig:
+    pre_enabled: bool = True
+    post_enabled: bool = True
+
+    @property
+    def required(self) -> bool:
+        return self.pre_enabled or self.post_enabled
+
+    @classmethod
+    def from_env(cls, env: Mapping[str, str] | None = None) -> ModerationConfig:
+        values = os.environ if env is None else env
+
+        def enabled(name: str) -> bool:
+            value = values.get(name, "true")
+            if value not in {"true", "false"}:
+                raise ValueError(f"{name} must be true or false")
+            return value == "true"
+
+        return cls(
+            pre_enabled=enabled("CCS_MODERATION_PRE_ENABLED"),
+            post_enabled=enabled("CCS_MODERATION_POST_ENABLED"),
+        )
 
 
 class ModerationClient:

@@ -53,6 +53,16 @@ config, external config, and two model volumes).
   `ghcr.io/aptos-labs/confidential-qwen-minimax-qwen-metered` digest. A rebuilt image
   requires its own verification and a new runtime release.
 
+## Configurable moderation stages
+
+`CCS_MODERATION_PRE_ENABLED` and `CCS_MODERATION_POST_ENABLED` independently control
+input and output checks. Both default to `true`; only literal `true`/`false` are valid.
+These are operator-owned startup settings, with effective values reported by `/health`.
+The requested deployment keeps pre-checks enabled and disables post-checks. Authentication,
+billing and gateway MP4 validation still apply. See [configuration details](docs/moderation.md#stage-configuration).
+The new gateway image and fleet environment wiring must be released before these settings
+affect production; the v0.3.4 runtime below still enables both stages.
+
 ## Guard GPU startup fix for v0.3.4
 
 Guard's CUDA self-test in v0.3.3 failed because PyTorch's eager Qwen3 rotary-embedding
