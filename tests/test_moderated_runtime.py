@@ -81,3 +81,32 @@ def test_release_runtime_matches_reviewed_renderer():
         containers["litellm"]["image"],
         containers["moderation-worker"]["image"],
     )
+
+
+def test_combined_model_stays_on_existing_gpus_and_two_model_disks():
+    base = yaml.safe_load(render.BASELINE.read_text())
+    image = render.REGISTRY + "confidential-qwen-minimax-video-controls@sha256:" + "c" * 64
+    pack = "d" * 64 + "_4096_12345678-1234-1234-1234-123456789012"
+    source = "MiniMaxAI/MiniMax-H3@" + "e" * 40
+    result = render.render(
+        base, GATEWAY, WORKER, minimax_image=image, minimax_pack=pack, minimax_repo=source
+    )
+    assert len(result["models"]) == 2 and result["gpus"] == 8
+    assert result["models"][0]["mpk"] == pack
+    assert result["models"][0]["repo"] == source
+    assert result["models"][1] == base["models"][1]
+    minimax = next(c for c in result["containers"] if c["name"] == "vllm-omni-minimax")
+    command = minimax["command"][0]
+    assert "CUDA_VISIBLE_DEVICES=0,1,2,3" in command
+    assert f"/tinfoil/mpk/mpk-{'d' * 64} " in command and "/FL2VA" not in command
+    assert "--tensor-parallel-size=4" in command and "--text-encoder-tp-size=4" in command
+    assert "--usp=1" in command and "--vae-patch-parallel-size=4" in command
+    assert minimax["image"] == image
+    assert base["models"][0]["mpk"] != pack
+
+
+def test_combined_model_requires_all_verified_artifacts():
+    with pytest.raises(ValueError, match="combined H3 requires"):
+        render.render(
+            yaml.safe_load(render.BASELINE.read_text()), GATEWAY, WORKER, minimax_pack="x"
+        )

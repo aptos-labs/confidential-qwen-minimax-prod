@@ -1,0 +1,43 @@
+# Build only reviewed source; preserve the existing watermark model image.
+substitutions:
+  _SOURCE_SHA: ''
+  _IMAGE: us-docker.pkg.dev/aptos-registry/ccs-images-public/confidential-qwen-minimax-video-controls
+steps:
+  - id: test-publish-verify-minimax-controls
+    name: docker.io/library/docker:27-cli@sha256:851f91d241214e7c6db86513b270d58776379aacc5eb9c4a87e5b47115e3065c
+    entrypoint: sh
+    env:
+      - DOCKER_BUILDKIT=1
+      - SOURCE_SHA=${_SOURCE_SHA}
+      - IMAGE=${_IMAGE}
+    args:
+      - -ceu
+      - |
+        apk add --no-cache python3
+        python3 -c 'import os,re; assert re.fullmatch("[0-9a-f]{40}", os.environ["SOURCE_SHA"]); assert os.environ["IMAGE"] == "us-docker.pkg.dev/aptos-registry/ccs-images-public/confidential-qwen-minimax-video-controls"'
+        docker buildx create --name minimax-controls-builder --driver docker-container --use \
+          --driver-opt image=docker.io/moby/buildkit:buildx-stable-1@sha256:cec9f139f45e93c5c69c60f8b07cfad9f43f4ef6b6a6cd917527fea5ff2e3dea
+        docker buildx build --platform linux/amd64 --target test images/minimax-controls
+        docker buildx build --platform linux/amd64 --target runtime --load \
+          --label org.opencontainers.image.source=https://github.com/aptos-labs/confidential-qwen-minimax-prod \
+          --label org.opencontainers.image.revision="$$SOURCE_SHA" \
+          --label org.opencontainers.image.base.digest=sha256:7b8454effe86fa13c8f80f4481c2fdaca0ce7fe321f8327a37858afe1448fbb7 \
+          -t ccs-minimax-controls:smoke -t "$$IMAGE:source-$$SOURCE_SHA" images/minimax-controls
+        python3 scripts/smoke_minimax_controls_image.py ccs-minimax-controls:smoke --local
+        docker push "$$IMAGE:source-$$SOURCE_SHA"
+        image_ref="$$(docker image inspect --format '{{index .RepoDigests 0}}' "$$IMAGE:source-$$SOURCE_SHA")"
+        case "$$image_ref" in "$$IMAGE"@sha256:*) ;; *) exit 1;; esac
+        mkdir -p /tmp/anonymous-docker
+        printf '{"auths":{}}\n' > /tmp/anonymous-docker/config.json
+        docker --config /tmp/anonymous-docker pull "$$image_ref"
+        python3 scripts/smoke_minimax_controls_image.py "$$image_ref"
+images:
+  - ${_IMAGE}:source-${_SOURCE_SHA}
+serviceAccount: projects/aptos-cloudbuild/serviceAccounts/ccs-public-api-builder@aptos-cloudbuild.iam.gserviceaccount.com
+options:
+  machineType: E2_HIGHCPU_8
+  diskSizeGb: 100
+  logging: CLOUD_LOGGING_ONLY
+  requestedVerifyOption: VERIFIED
+  sourceProvenanceHash: [SHA256]
+timeout: 5400s

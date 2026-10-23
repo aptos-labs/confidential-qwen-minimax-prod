@@ -1,0 +1,25 @@
+name: Validate MiniMax output controls
+on:
+  pull_request:
+permissions:
+  contents: read
+concurrency:
+  group: minimax-controls-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+jobs:
+  image:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+        with:
+          persist-credentials: false
+      - name: Require disk space
+        run: python3 -c 'import shutil; assert shutil.disk_usage("/var/lib/docker").free >= 30 * 1024**3, "Need 30 GiB for model image checks"'
+      - uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd
+      - name: Test real serving control flow and MP4 encoding on CPU
+        run: docker buildx build --platform linux/amd64 --target test images/minimax-controls
+      - name: Check final image with network and GPUs disabled
+        run: |
+          docker buildx build --platform linux/amd64 --target runtime --load -t ccs-minimax-controls:smoke images/minimax-controls
+          python3 scripts/smoke_minimax_controls_image.py ccs-minimax-controls:smoke --local

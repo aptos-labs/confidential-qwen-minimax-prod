@@ -1,0 +1,17 @@
+--- a/vllm_omni/entrypoints/openai/serving_video.py
++++ b/vllm_omni/entrypoints/openai/serving_video.py
+@@ -326,7 +326,13 @@
+         common_metadata = metadata.get("common") if isinstance(metadata, dict) else {}
+         action_only = bool(isinstance(common_metadata, dict) and common_metadata.get("action_only_output"))
+         videos = [{"action_only_output": True}] if action_only else self._extract_video_outputs(result)
+-        audios = self._extract_audio_outputs(result, expected_count=len(videos))
++        # H3 generates joint video/audio even when audio is not requested.
++        # Suppress muxing here so both sync and async outputs are truly silent.
++        audios = (
++            [None] * len(videos)
++            if request.generate_sound is False
++            else self._extract_audio_outputs(result, expected_count=len(videos))
++        )
+         actions = self._extract_action_outputs(result, expected_count=len(videos))
+         audio_sample_rate = self._resolve_audio_sample_rate(result)
+         model_fps = self._resolve_fps(result)
