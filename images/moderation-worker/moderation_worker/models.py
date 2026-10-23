@@ -13,6 +13,7 @@ from .policy import RUBRIC, guard_verdict
 
 QWEN_URL = "http://vllm-omni-qwen:8000/v1/chat/completions"
 MODEL_DIR = "/opt/qwen3guard"
+GUARD_MAX_INPUT_TOKENS = 16384
 
 
 class Guard:
@@ -63,7 +64,7 @@ class Guard:
             return_dict=True,
         )
         input_length = encoded["input_ids"].shape[1]
-        if input_length > 8192:
+        if input_length > GUARD_MAX_INPUT_TOKENS:
             raise ModerationFailure
         self.startup_stage = "guard_transfer"
         encoded = encoded.to(self.model.device)
