@@ -25,7 +25,7 @@ from .client import (
     strict_json,
 )
 from .media import MeterError, mp4_duration
-from .moderation import WORKER_URL, ModerationClient
+from .moderation import WORKER_URL, ModerationClient, ModerationConfig
 from .protocol import (
     BODY_LIMIT,
     INPUT_LIMIT,
@@ -296,7 +296,12 @@ class PaidGateway:
         billing: BillingClient | None = None,
         upstream: httpx.AsyncClient | None = None,
         moderation: ModerationClient | None = None,
+        moderation_config: ModerationConfig | None = None,
     ) -> None:
+        # Parse configuration before creating clients; invalid values abort startup.
+        self.moderation_config = (
+            ModerationConfig.from_env() if moderation_config is None else moderation_config
+        )
         self.app = app
         self.allowed_models = PRODUCTION_MODELS
         if billing is None:
@@ -462,9 +467,13 @@ class PaidGateway:
         return list(await asyncio.gather(*(fetch(base) for base in self.observability_targets)))
 
     async def health(self, scope: Scope, receive: Receive, send: Send) -> None:
-        results, moderation_health = await asyncio.gather(
-            self._backend_get("/health"), self.moderation.startup_health()
-        )
+        if self.moderation_config.required:
+            results, moderation_health = await asyncio.gather(
+                self._backend_get("/health"), self.moderation.startup_health()
+            )
+        else:
+            results = await self._backend_get("/health")
+            moderation_health = None
         backends = [
             {
                 "endpoint": endpoint,
@@ -472,18 +481,26 @@ class PaidGateway:
             }
             for endpoint, result in zip(self.observability_targets, results, strict=True)
         ]
-        moderation_ready, startup_stage, startup_failed = moderation_health
-        backends.append(
-            {
-                "endpoint": WORKER_URL,
-                "status": 200 if moderation_ready else 503,
-                "startup_stage": startup_stage,
-                "startup_failed": startup_failed,
-            }
-        )
+        if moderation_health is not None:
+            moderation_ready, startup_stage, startup_failed = moderation_health
+            backends.append(
+                {
+                    "endpoint": WORKER_URL,
+                    "status": 200 if moderation_ready else 503,
+                    "startup_stage": startup_stage,
+                    "startup_failed": startup_failed,
+                }
+            )
         healthy = all(item["status"] == 200 for item in backends)
         await JSONResponse(
-            {"status": "ok" if healthy else "unhealthy", "backends": backends},
+            {
+                "status": "ok" if healthy else "unhealthy",
+                "backends": backends,
+                "moderation": {
+                    "pre_enabled": self.moderation_config.pre_enabled,
+                    "post_enabled": self.moderation_config.post_enabled,
+                },
+            },
             status_code=200 if healthy else 503,
         )(scope, receive, send)
 
@@ -519,6 +536,7 @@ class PaidGateway:
                 except (TypeError, ValueError, KeyError) as exc:
                     raise GatewayError("invalid_request", 400) from exc
                 maximum = await session.admit(model, inputs, sorted(outputs))
+                meter: QwenMeter | UsageOnlyMeter
                 if maximum is None:
                     meter = UsageOnlyMeter(outputs)
                 else:
@@ -555,7 +573,8 @@ class PaidGateway:
                 video = parse_video(body, request.headers["content-type"])
                 maximum = await session.admit(model, video.modalities, ["video"])
                 async with asyncio.timeout_at(session.deadline):
-                    await self.moderation.check("pre", body, request.headers["content-type"])
+                    if self.moderation_config.pre_enabled:
+                        await self.moderation.check("pre", body, request.headers["content-type"])
                     async with self.upstream.stream(
                         "POST",
                         self.targets[model],
@@ -574,10 +593,13 @@ class PaidGateway:
                             raise GatewayError("upstream_failed", 502)
                         data = await self.collect(response)
                     duration = mp4_duration(data)
-                    await self.moderation.check(
-                        "post", data, "video/mp4", audio_expected=video.audio_expected
-                    )
+                    if self.moderation_config.post_enabled:
+                        await self.moderation.check(
+                            "post", data, "video/mp4", audio_expected=video.audio_expected
+                        )
                     if not session.billing_disabled:
+                        if maximum is None:
+                            raise GatewayError("billing_unavailable")
                         await session.checkpoint(video_meter(duration, maximum))
                     await session.finish("completed")
                     await writer.full(data, "video/mp4")
@@ -612,7 +634,7 @@ class PaidGateway:
         return bytes(data)
 
     async def buffered_chat(
-        self, raw: bytes, session: Session, writer: Writer, meter: QwenMeter
+        self, raw: bytes, session: Session, writer: Writer, meter: QwenMeter | UsageOnlyMeter
     ) -> None:
         value = upstream_json(raw)
         if not isinstance(value, dict) or value.get("error"):
@@ -661,7 +683,7 @@ class PaidGateway:
         response: httpx.Response,
         session: Session,
         writer: Writer,
-        meter: QwenMeter,
+        meter: QwenMeter | UsageOnlyMeter,
         include_usage: bool,
     ) -> None:
         pending: list[bytes] = []
