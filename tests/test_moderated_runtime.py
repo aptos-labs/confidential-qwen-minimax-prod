@@ -51,6 +51,10 @@ def test_candidate_has_disjoint_4_3_1_placement_and_private_moderation():
     assert result["shim"] == base["shim"]  # no public worker route
     assert result["networks"] == base["networks"]
     assert worker["image"] == WORKER and c["litellm"]["image"] == GATEWAY
+    assert c["litellm"]["env"] == [
+        "CCS_MODERATION_PRE_ENABLED",
+        "CCS_MODERATION_POST_ENABLED",
+    ]
 
 
 @pytest.mark.parametrize(

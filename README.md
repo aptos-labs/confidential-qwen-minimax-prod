@@ -18,12 +18,12 @@ release is a new tag. Do not reuse an archived tag.
 ## What is attested
 
 `tinfoil-config.yml` is the exact measured runtime the CVM host agent materializes for the
-fleet object. Release `v0.3.4` includes mandatory MiniMax input/output moderation, the private
+fleet object. Release `v0.3.5` provides configurable MiniMax input/output moderation, the private
 Guard worker, and a 4/3/1 GPU allocation. Model images and packs, hardware shape, and public
-API routes are preserved. This release is for initial live validation; moderation quality
-and latency on GPUs have not yet been established.
+API routes are preserved. v0.3.4 passed live startup and authenticated video smoke checks;
+broader moderation quality and load performance remain unvalidated.
 The YAML uses the canonical order emitted after the fleet API's JSON round trip. Its SHA-256 is
-`575bd0b450e00ecccaabd19bc8f8d56d5cd50cf81a1fa1b472761f0af48e6540`.
+`686f7c1782f7c4bbe98d09c692f539ad0d4a5ab465a2aea5847f73c56a2de923`.
 
 A gateway fronts both models and attempts CCS admission before calling a model
 server. When the admission route returns 404, the gateway uses the same usage-only
@@ -53,15 +53,25 @@ config, external config, and two model volumes).
   `ghcr.io/aptos-labs/confidential-qwen-minimax-qwen-metered` digest. A rebuilt image
   requires its own verification and a new runtime release.
 
-## Configurable moderation stages
+## Configurable moderation stages in v0.3.5
 
 `CCS_MODERATION_PRE_ENABLED` and `CCS_MODERATION_POST_ENABLED` independently control
 input and output checks. Both default to `true`; only literal `true`/`false` are valid.
 These are operator-owned startup settings, with effective values reported by `/health`.
 The requested deployment keeps pre-checks enabled and disables post-checks. Authentication,
 billing and gateway MP4 validation still apply. See [configuration details](docs/moderation.md#stage-configuration).
-The new gateway image and fleet environment wiring must be released before these settings
-affect production; the v0.3.4 runtime below still enables both stages.
+The measured runtime exposes both environment names; the deployment's external configuration
+sets `CCS_MODERATION_PRE_ENABLED=true` and `CCS_MODERATION_POST_ENABLED=false`. Changing these
+startup values needs a gateway restart, but no image rebuild. External values are
+operator-controlled rather than included in the runtime hash.
+
+The gateway was built from `abf9c3eb6713643634ec298f631991b3f4826cf2` by
+[Cloud Build c44c7b04-f3e2-459a-8160-4964eb898e5f](https://console.cloud.google.com/cloud-build/builds/c44c7b04-f3e2-459a-8160-4964eb898e5f?project=aptos-cloudbuild).
+Tests, offline smoke, anonymous digest pulls, and Google-signed provenance verification passed.
+Gateway: `us-docker.pkg.dev/aptos-registry/ccs-images-public/confidential-qwen-minimax-paid-gateway@sha256:cca29c407654afc510dee8c91ab35c597873078ef11c27662ddb185327211c42`.
+The worker and model image digests are retained from v0.3.4. The runtime change is the gateway
+image and its two environment names; the GPU layout and dedicated Guard Triton cache remain
+as documented below.
 
 ## Guard GPU startup fix for v0.3.4
 

@@ -28,6 +28,10 @@ def render(base: dict[str, Any], gateway: str, worker: str) -> dict[str, Any]:
     if set(containers) != {"litellm", "vllm-omni-qwen", "vllm-omni-minimax"}:
         raise ValueError("expected the reviewed unmoderated baseline")
     containers["litellm"]["image"] = gateway
+    containers["litellm"]["env"] = [
+        "CCS_MODERATION_PRE_ENABLED",
+        "CCS_MODERATION_POST_ENABLED",
+    ]
     qwen = containers["vllm-omni-qwen"]
     command = qwen["command"][0]
     expected = "CUDA_VISIBLE_DEVICES=4,5,6,7"

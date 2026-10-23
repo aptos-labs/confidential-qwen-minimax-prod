@@ -1,5 +1,8 @@
 containers:
-- healthcheck:
+- env:
+  - CCS_MODERATION_PRE_ENABLED
+  - CCS_MODERATION_POST_ENABLED
+  healthcheck:
     interval: 30s
     start_period: 60m
     test:
@@ -17,7 +20,7 @@ containers:
       else:
           raise RuntimeError('Video method guard is missing')
     timeout: 10s
-  image: us-docker.pkg.dev/aptos-registry/ccs-images-public/confidential-qwen-minimax-paid-gateway@sha256:32b44879dda148a4f727053f8157cb51bb70bb7ae91ff82048d63f258619ae4f
+  image: us-docker.pkg.dev/aptos-registry/ccs-images-public/confidential-qwen-minimax-paid-gateway@sha256:cca29c407654afc510dee8c91ab35c597873078ef11c27662ddb185327211c42
   name: litellm
   networks:
   - models
