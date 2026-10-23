@@ -84,6 +84,7 @@ def test_release_runtime_matches_reviewed_renderer():
         minimax_image=containers["vllm-omni-minimax"]["image"],
         minimax_pack=minimax["mpk"],
         minimax_repo=minimax["repo"],
+        voice_samples="CCS_MODERATION_AUDIO_ENABLED" in containers["litellm"]["env"],
     )
 
 

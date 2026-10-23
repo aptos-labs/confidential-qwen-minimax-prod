@@ -18,13 +18,13 @@ release is a new tag. Do not reuse an archived tag.
 ## What is attested
 
 `tinfoil-config.yml` is the exact measured runtime the CVM host agent materializes for the
-fleet object. Release `v0.4.0` adds Ref2VA with 1–9 image references and silent MP4
-delivery. MiniMax shards its combined checkpoint over GPUs 0–3; Qwen remains on 4–6 and
+fleet object. Release `v0.5.0` adds WAV/MP3 voice references and independent input-audio
+moderation to the existing Ref2VA image references and silent MP4 delivery. MiniMax shards its combined checkpoint over GPUs 0–3; Qwen remains on 4–6 and
 Guard on 7. The signed hardware shape, two model volumes, watermark, and configurable
-moderation stages are preserved. The deployment keeps input checks enabled and output
-checks disabled. Broader moderation quality and load performance remain unvalidated.
+moderation stages are preserved. The deployment keeps prompt/image checks enabled, with voice-sample content
+classification and output checks disabled. Format and duration validation remain enforced. Broader moderation quality and load performance remain unvalidated.
 The YAML uses the canonical order emitted after the fleet API's JSON round trip. Its SHA-256 is
-`e5ca44a854e75c3a495329dd4186f05a346c80d790f03551e60970f1af41644e`.
+`9e04882b4752b2121f0370f49ea2bfc9b4de8594e189a280377e0fc61d171da3`.
 
 A gateway fronts both models and attempts CCS admission before calling a model
 server. When the admission route returns 404, the gateway uses the same usage-only
@@ -57,13 +57,28 @@ config, external config, and two model volumes).
   `ghcr.io/aptos-labs/confidential-qwen-minimax-qwen-metered` digest. A rebuilt image
   requires its own verification and a new runtime release.
 
-## Voice-sample implementation
+## Voice samples in v0.5.0
 
-The gateway/worker source adds WAV/MP3 references for Ref2VA and the independent
-`CCS_MODERATION_AUDIO_ENABLED` setting (default `false`). Prompt/image moderation remains
-separate. These source changes require newly published gateway/worker images and a runtime
-release; the current measured v0.4.0 runtime remains unchanged. See [voice samples](docs/video-controls.md#voice-samples)
-for limits, the curl example, and upstream cropping behavior.
+The measured runtime replaces only the gateway and worker images and exposes
+`CCS_MODERATION_AUDIO_ENABLED` (default `false`). WAV/MP3 references use the existing H3
+image and combined checkpoint; model artifacts, watermark and 4/3/1 GPU placement are retained.
+The requested external configuration is pre=`true`, post=`false`, audio=`false`.
+See [voice samples](docs/video-controls.md#voice-samples) for the curl example and limits.
+
+Gateway/worker source: `e50ad740d93d2fc50dd26841bf796533e94331b6`, reviewed and merged in
+[#17](https://github.com/aptos-labs/confidential-qwen-minimax-prod/pull/17) as
+`b379c1c8645b2de8b744c4b2b770af2a5a5cacd2` with an identical tree. Local tests (691 plus
+47 subtests), strict mypy, Ruff, all CI image checks and Bugbot passed. Cloud Build tested
+and published both images to `us-docker.pkg.dev/aptos-registry/ccs-images-public`; signed
+provenance, source archive hashes, OCI digests and anonymous pull access were independently verified.
+
+| Image | Cloud Build | Digest |
+|---|---|---|
+| `confidential-qwen-minimax-paid-gateway` | [5c7786fd-fde8-41b5-82a5-6759ec14b2c9](https://console.cloud.google.com/cloud-build/builds/5c7786fd-fde8-41b5-82a5-6759ec14b2c9?project=aptos-cloudbuild) | `sha256:b957cb568e0eda20efc9c8321f0dbe8ff0ada9b1cd19b60707152baf13c0d2b2` |
+| `confidential-qwen-minimax-moderation-worker` | [6054f6f7-b05f-466b-b3eb-d08da7e5b321](https://console.cloud.google.com/cloud-build/builds/6054f6f7-b05f-466b-b3eb-d08da7e5b321?project=aptos-cloudbuild) | `sha256:856f4b56e57407f3edf56d764ebe5535741f5434674a7912adf5b3b847eb73bb` |
+
+Source archive SHA-256: `df5ddcdd61d51da908198829059be2b7ebd43d8b5fe421593600bf9d60ea6822`.
+Live voice fidelity, GPU latency and deployment readiness are separate rollout checks.
 
 ## Reference images and silent output in v0.4.0
 

@@ -2,6 +2,7 @@ containers:
 - env:
   - CCS_MODERATION_PRE_ENABLED
   - CCS_MODERATION_POST_ENABLED
+  - CCS_MODERATION_AUDIO_ENABLED
   healthcheck:
     interval: 30s
     start_period: 60m
@@ -20,7 +21,7 @@ containers:
       else:
           raise RuntimeError('Video method guard is missing')
     timeout: 10s
-  image: us-docker.pkg.dev/aptos-registry/ccs-images-public/confidential-qwen-minimax-paid-gateway@sha256:3e78cd2ead62bfbdfd4be3aef82a806484f084b75e9266102485c01764cedffb
+  image: us-docker.pkg.dev/aptos-registry/ccs-images-public/confidential-qwen-minimax-paid-gateway@sha256:b957cb568e0eda20efc9c8321f0dbe8ff0ada9b1cd19b60707152baf13c0d2b2
   name: litellm
   networks:
   - models
@@ -108,7 +109,7 @@ containers:
     - -c
     - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health/liveliness', timeout=3).close()
     timeout: 10s
-  image: us-docker.pkg.dev/aptos-registry/ccs-images-public/confidential-qwen-minimax-moderation-worker@sha256:445df99707167e10828f993a027cf29dc3cf7d38a158da01fce00703665fc8a8
+  image: us-docker.pkg.dev/aptos-registry/ccs-images-public/confidential-qwen-minimax-moderation-worker@sha256:856f4b56e57407f3edf56d764ebe5535741f5434674a7912adf5b3b847eb73bb
   ipc: private
   name: moderation-worker
   networks:
