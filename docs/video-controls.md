@@ -29,8 +29,8 @@ nine-image limit. Character fidelity requires evaluation on representative input
 
 ## Voice samples
 
-Voice-sample support is implemented in the gateway/worker source; publishing the updated
-images and a measured runtime is required to enable it on the public endpoint.
+The v0.5.0 measured runtime includes WAV/MP3 voice-sample support in its verified gateway
+and worker images. Live readiness and voice quality remain rollout checks.
 The existing H3 image and combined checkpoint already support reference audio. No model
 repack or GPU-placement change is required.
 

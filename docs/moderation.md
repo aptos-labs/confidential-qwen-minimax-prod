@@ -1,6 +1,8 @@
 # MiniMax moderation
 
-Status: v0.3.5 passed live startup, authentication, policy-block and text/first-last-frame
+Status: v0.5.0 adds independent input-audio classification (default off) and mandatory
+WAV/MP3 format/duration validation, preserving prompt/image and output settings.
+v0.3.5 passed live startup, authentication, policy-block and text/first-last-frame
 video checks with pre=`true`/post=`false`. The v0.4.0 measured runtime adds the shared
 nine-image Ref2VA parser and silent-output model image; these stage settings and the
 physical 4/3/1 GPU allocation are retained. See [video controls](video-controls.md) for
