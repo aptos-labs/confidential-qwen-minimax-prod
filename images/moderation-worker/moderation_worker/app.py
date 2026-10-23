@@ -9,8 +9,10 @@ import json
 import tempfile
 import wave
 from collections.abc import AsyncIterator
+from fractions import Fraction
 from pathlib import Path
 
+from paid_gateway.client import GatewayError
 from paid_gateway.moderation_contract import (
     ALLOW,
     STARTUP_STAGES,
@@ -19,14 +21,15 @@ from paid_gateway.moderation_contract import (
     Verdict,
 )
 from paid_gateway.protocol import BODY_LIMIT, OUTPUT_LIMIT
-from paid_gateway.video_request import parse_video
+from paid_gateway.video_request import VideoRequest, parse_video
+from paid_gateway.voice_sample import voice_duration
 from PIL import Image
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse
 from starlette.routing import Route
 
-from .media import checked_image, decode_video
+from .media import checked_image, decode_video, decode_voice
 from .models import Guard, Omni, audio_part, image_part, text_part
 
 
@@ -54,8 +57,48 @@ class Worker:
             "failed": self.startup_failed or (self.ready and not self.guard.healthy),
         }
 
-    async def pre(self, body: bytes, content_type: str) -> Verdict:
+    async def pre(
+        self,
+        body: bytes,
+        content_type: str,
+        *,
+        inputs_enabled: bool = True,
+        audio_enabled: bool = False,
+    ) -> Verdict:
         video = parse_video(body, content_type)
+        decoded_voices: list[bytes] = []
+        if video.needs_audio_validation or audio_enabled:
+            duration = Fraction(0)
+            with tempfile.TemporaryDirectory(prefix="moderation-voice-") as scratch:
+                for mime, raw in video.audios:
+                    if mime == "audio/wav" and not audio_enabled:
+                        duration += voice_duration(raw)
+                    else:
+                        audio = await decode_voice(raw, Path(scratch), mime)
+                        duration += voice_duration(audio)
+                        if audio_enabled:
+                            decoded_voices.append(audio)
+                    if duration > 15:
+                        raise GatewayError("invalid_request", 400)
+        if inputs_enabled:
+            verdict = await self.pre_visual(video)
+            if verdict.decision == "block":
+                return verdict
+        if audio_enabled:
+            for audio in decoded_voices:
+                verdict = await self.omni.classify(
+                    [
+                        text_part(
+                            "Classify this uploaded voice sample, including all speech and sounds."
+                        ),
+                        audio_part(audio),
+                    ]
+                )
+                if verdict.decision == "block":
+                    return verdict
+        return ALLOW
+
+    async def pre_visual(self, video: VideoRequest) -> Verdict:
         verdict = await self.guard.check(video.prompt)
         if verdict.decision == "block":
             return verdict
@@ -113,7 +156,12 @@ class Worker:
             return ALLOW
 
     async def check(self, request: Request) -> JSONResponse:
-        if not self.ready or not self.guard.healthy or self.busy:
+        inputs = request.headers.getlist("x-moderation-inputs") or ["true"]
+        audio = request.headers.getlist("x-moderation-audio") or ["false"]
+        if inputs not in [["true"], ["false"]] or audio not in [["true"], ["false"]]:
+            return JSONResponse(UNAVAILABLE.wire(), status_code=503)
+        requires_models = request.url.path != "/pre" or inputs == ["true"] or audio == ["true"]
+        if self.busy or (requires_models and (not self.ready or not self.guard.healthy)):
             return JSONResponse(UNAVAILABLE.wire(), status_code=503)
         self.busy = True  # no await between admission and reservation
         try:
@@ -128,7 +176,14 @@ class Worker:
                 if len(content_types) != 1:
                     raise ModerationFailure
                 if request.url.path == "/pre":
-                    operation = asyncio.create_task(self.pre(bytes(raw), content_types[0]))
+                    operation = asyncio.create_task(
+                        self.pre(
+                            bytes(raw),
+                            content_types[0],
+                            inputs_enabled=inputs == ["true"],
+                            audio_enabled=audio == ["true"],
+                        )
+                    )
                 else:
                     expected = request.headers.getlist("x-audio-expected")
                     if content_types != ["video/mp4"] or expected not in [["true"], ["false"]]:
@@ -157,6 +212,12 @@ class Worker:
                     with contextlib.suppress(asyncio.CancelledError):
                         await operation
                 return JSONResponse(verdict.wire())
+        except GatewayError as exc:
+            if exc.code == "invalid_request":
+                return JSONResponse(
+                    {"decision": "block", "category": "invalid_request"}, status_code=400
+                )
+            return JSONResponse(UNAVAILABLE.wire(), status_code=503)
         except Exception:
             # No exception text, model response, prompt, media, or traceback escapes.
             return JSONResponse(UNAVAILABLE.wire(), status_code=503)

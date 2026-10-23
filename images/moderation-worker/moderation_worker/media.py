@@ -14,8 +14,10 @@ import wave
 from dataclasses import dataclass
 from pathlib import Path
 
+from paid_gateway.client import GatewayError
 from paid_gateway.media import mp4_metadata
 from paid_gateway.moderation_contract import ModerationFailure, strict_object
+from paid_gateway.voice_sample import validate_mp3, voice_duration
 from PIL import Image
 
 MAX_IMAGE_PIXELS = 16 * 1024 * 1024
@@ -54,7 +56,9 @@ def checked_image(data: bytes, mime: str = "image/png") -> bytes:
         raise ModerationFailure from exc
 
 
-async def run_decoder(program: str, args: list[str], *, capture: bool = False) -> bytes:
+async def run_decoder(
+    program: str, args: list[str], *, capture: bool = False, invalid_input: bool = False
+) -> bytes:
     executable = shutil.which(program)
     if executable is None:
         raise ModerationFailure
@@ -78,7 +82,10 @@ async def run_decoder(program: str, args: list[str], *, capture: bool = False) -
                     data.extend(chunk)
                     if len(data) > 32768:
                         raise ModerationFailure
-            if await process.wait() != 0:
+            code = await process.wait()
+            if invalid_input and code > 0:
+                raise GatewayError("invalid_request", 400)
+            if code != 0:
                 raise ModerationFailure
             return bytes(data)
     finally:
@@ -94,6 +101,70 @@ async def run_decoder(program: str, args: list[str], *, capture: bool = False) -
 class Decoded:
     frames: tuple[Path, ...]
     audio: Path | None
+
+
+async def decode_voice(data: bytes, directory: Path, mime: str = "audio/wav") -> bytes:
+    """Fully decode bounded WAV/MP3 and normalize for Qwen, without any network access."""
+    duration = None
+    if mime == "audio/wav":
+        duration = voice_duration(data)
+    elif mime == "audio/mpeg":
+        validate_mp3(data)
+    else:
+        raise GatewayError("invalid_request", 400)
+    source, target = directory / "voice.wav", directory / "voice-24k.wav"
+    source.write_bytes(data)
+    source.chmod(0o600)
+    await run_decoder(
+        "ffmpeg",
+        [
+            "-nostdin",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-xerror",
+            "-y",
+            "-max_alloc",
+            str(16 * 1024**2),
+            "-protocol_whitelist",
+            "file,pipe",
+            "-f",
+            "wav" if mime == "audio/wav" else "mp3",
+            "-err_detect",
+            "explode",
+            "-threads",
+            "1",
+            "-i",
+            str(source),
+            "-map",
+            "0:a:0",
+            "-vn",
+            "-ac",
+            "2",
+            "-ar",
+            "24000",
+            "-c:a",
+            "pcm_s16le",
+            "-threads",
+            "1",
+            "-fs",
+            "2000000",
+            str(target),
+        ],
+        invalid_input=True,
+    )
+    with wave.open(str(target), "rb") as wav:
+        count = wav.getnframes()
+        if (
+            wav.getnchannels() != 2
+            or wav.getsampwidth() != 2
+            or wav.getframerate() != 24000
+            or not 2 * 24000 <= count <= 15 * 24000
+            or (duration is not None and abs(count - duration * 24000) > 1)
+            or len(wav.readframes(count + 1)) != count * 4
+        ):
+            raise GatewayError("invalid_request", 400)
+    return target.read_bytes()
 
 
 async def decode_video(data: bytes, directory: Path, *, audio_expected: bool) -> Decoded:

@@ -221,7 +221,10 @@ def test_moderation_config_defaults_and_independent_controls():
     )
 
 
-@pytest.mark.parametrize("name", ["CCS_MODERATION_PRE_ENABLED", "CCS_MODERATION_POST_ENABLED"])
+@pytest.mark.parametrize(
+    "name",
+    ["CCS_MODERATION_PRE_ENABLED", "CCS_MODERATION_POST_ENABLED", "CCS_MODERATION_AUDIO_ENABLED"],
+)
 @pytest.mark.parametrize("value", ["", "0", "1", "False", "off", " false", "private-invalid"])
 def test_invalid_moderation_config_aborts_before_clients(name, value, monkeypatch):
     monkeypatch.setenv(name, value)
@@ -379,6 +382,7 @@ def test_health_only_requires_worker_for_enabled_stages(pre_enabled, post_enable
             assert response.json()["moderation"] == {
                 "pre_enabled": pre_enabled,
                 "post_enabled": post_enabled,
+                "audio_enabled": False,
             }
         finally:
             await gateway.close()

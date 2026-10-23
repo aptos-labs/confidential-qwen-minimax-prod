@@ -114,3 +114,12 @@ def test_combined_model_requires_all_verified_artifacts():
         render.render(
             yaml.safe_load(render.BASELINE.read_text()), GATEWAY, WORKER, minimax_pack="x"
         )
+
+
+def test_voice_samples_expose_independent_audio_control_without_gpu_or_model_changes():
+    base = yaml.safe_load(render.BASELINE.read_text())
+    existing = render.render(base, GATEWAY, WORKER)
+    candidate = render.render(base, GATEWAY, WORKER, voice_samples=True)
+    gateway = next(c for c in candidate["containers"] if c["name"] == "litellm")
+    assert gateway["env"].pop() == "CCS_MODERATION_AUDIO_ENABLED"
+    assert candidate == existing
