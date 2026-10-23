@@ -96,8 +96,11 @@ The pre-check runs Qwen3Guard-Gen-0.6B on the complete prompt using its native c
 Every Unsafe or Controversial severity blocks. Sexual labels block regardless of severity.
 Only valid Safe/None may continue. A secondary Qwen3-Omni policy classification checks the
 prompt and role-labeled negative prompt, followed by every uploaded image. No secondary
-check can override a Guard block. Text is capped at 16 KiB per field and Guard at 8192 input
-tokens; no input is silently truncated. Images must fully decode as static PNG/JPEG and fit
+check can override a Guard block. Text is capped at 16 KiB per field and Guard at 16,384 input
+tokens, including its chat template; no input is silently truncated. The pinned Guard model has
+a 32,768-token context, leaving room for the 128-token verdict budget. The expanded Guard cap
+requires a rebuilt worker image and rollout; v0.5.0 still enforces 8,192 tokens.
+Images must fully decode as static PNG/JPEG and fit
 the pixel/byte limits. The gateway and worker share the same multipart parser.
 
 The post-check validates the MP4, fully decodes its video/audio, and classifies each sampled
