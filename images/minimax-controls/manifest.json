@@ -4,11 +4,12 @@
   "base_image": "us-docker.pkg.dev/aptos-registry/ccs-images-public/minimax-watermark@sha256:7b8454effe86fa13c8f80f4481c2fdaca0ce7fe321f8327a37858afe1448fbb7",
   "target": "entrypoints/openai/serving_video.py",
   "original_sha256": "e4a60e930773a4af69c4dd6fa1366bfd42d877f38c44ba6e90d414e42cc5473d",
-  "patched_sha256": "02e3c7a69cc18af3d1995a948d5628062243d74a3d39e3d61cf69337168f73f9",
+  "patched_sha256": "5c7885d6c37cbcdc0f2e9a36dbbb89cc26b9abf8da7a3a4a9d7a3bd781a1e268",
   "old": "        audios = self._extract_audio_outputs(result, expected_count=len(videos))\n",
-  "new": "        # H3 generates joint video/audio even when audio is not requested.\n        # Suppress muxing here so both sync and async outputs are truly silent.\n        audios = (\n            [None] * len(videos)\n            if request.generate_sound is False\n            else self._extract_audio_outputs(result, expected_count=len(videos))\n        )\n",
+  "new": "        # H3 generates joint video/audio even when audio is not requested.\n        # Suppress muxing here so both sync and async outputs are truly silent.\n        audios = (\n            [None] * len(videos)\n            if \"generate_sound\" in provided_fields and request.generate_sound is False\n            else self._extract_audio_outputs(result, expected_count=len(videos))\n        )\n",
   "preserved_files": {
     "diffusion/utils/media_utils.py": "29bf765bc7d67ac6ddeb91414ce0869970d4f90ba28143c87ac070e0839af452",
-    "diffusion/utils/commercial_use.py": "c97a97649bde99f03d4f8d599d8b5a4fff9c088561e81ecc8a5d233cc624829f"
+    "diffusion/utils/commercial_use.py": "c97a97649bde99f03d4f8d599d8b5a4fff9c088561e81ecc8a5d233cc624829f",
+    "entrypoints/openai/protocol/videos.py": "1eb3762c145acb04f2964bfb0f05d44e470d91b31448693386c43ceefc7eae79"
   }
 }

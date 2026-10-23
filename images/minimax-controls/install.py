@@ -35,7 +35,7 @@ def prepare(root: Path, artifact: Path = ARTIFACT) -> tuple[Path, bytes]:
         raise ValueError("unexpected patch manifest")
     for name, expected in manifest["preserved_files"].items():
         if sha256(regular_file(root, name).read_bytes()) != expected:
-            raise ValueError(f"watermark source drift: {name}")
+            raise ValueError(f"preserved source drift: {name}")
     path = regular_file(root, TARGET)
     source = path.read_bytes()
     if sha256(source) == manifest["patched_sha256"]:

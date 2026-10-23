@@ -9,7 +9,7 @@
 +        # Suppress muxing here so both sync and async outputs are truly silent.
 +        audios = (
 +            [None] * len(videos)
-+            if request.generate_sound is False
++            if "generate_sound" in provided_fields and request.generate_sound is False
 +            else self._extract_audio_outputs(result, expected_count=len(videos))
 +        )
          actions = self._extract_action_outputs(result, expected_count=len(videos))

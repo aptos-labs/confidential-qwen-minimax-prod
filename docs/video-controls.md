@@ -30,7 +30,10 @@ nine-image limit. Character fidelity requires evaluation on representative input
 ## Silent delivery
 
 `generate_sound=false` removes audio from the returned MP4. Omitted/true retains the existing
-audio behavior. The exact-source patch in `images/minimax-controls` discards the audio output
+audio behavior. The patch checks explicit field presence because the upstream request schema
+defaults the omitted field to false. Tests use that actual pinned Pydantic schema, including
+its defaults, instead of a synthetic request default.
+The exact-source patch in `images/minimax-controls` discards the audio output
 before the shared sync/async MP4 assembly path. Video frames, sampling and seed are unchanged.
 H3 still computes its joint audio/video latents; this setting does not avoid that GPU work.
 
