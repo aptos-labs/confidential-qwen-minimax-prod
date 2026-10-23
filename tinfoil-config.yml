@@ -20,7 +20,7 @@ containers:
       else:
           raise RuntimeError('Video method guard is missing')
     timeout: 10s
-  image: us-docker.pkg.dev/aptos-registry/ccs-images-public/confidential-qwen-minimax-paid-gateway@sha256:cca29c407654afc510dee8c91ab35c597873078ef11c27662ddb185327211c42
+  image: us-docker.pkg.dev/aptos-registry/ccs-images-public/confidential-qwen-minimax-paid-gateway@sha256:3e78cd2ead62bfbdfd4be3aef82a806484f084b75e9266102485c01764cedffb
   name: litellm
   networks:
   - models
@@ -65,7 +65,7 @@ containers:
     /root: size=20g,mode=0700,exec
     /tmp: size=20g,mode=1777,exec
 - command:
-  - CUDA_VISIBLE_DEVICES=0,1,2,3 exec vllm serve /tinfoil/mpk/mpk-87721463756e43f0b64a59975b41e6798f43921cbfd4f69524be59ebb3a893a8/FL2VA --trust-remote-code --host=0.0.0.0 --num-gpus=4 --usp=4 --ring=1 --vae-patch-parallel-size=4 --vae-parallel-mode=tile --vae-use-tiling --port=8001 --omni --served-model-name minimax-h3-fl2va >/dev/null 2>&1
+  - CUDA_VISIBLE_DEVICES=0,1,2,3 exec vllm serve /tinfoil/mpk/mpk-d202414c2cfe1a5d04643061ef01566f50130a2e914d0cb8ecbc3a0683157b47 --trust-remote-code --host=0.0.0.0 --num-gpus=4 --tensor-parallel-size=4 --text-encoder-tp-size=4 --usp=1 --ring=1 --vae-patch-parallel-size=4 --vae-parallel-mode=tile --vae-use-tiling --port=8001 --omni --served-model-name minimax-h3-fl2va >/dev/null 2>&1
   entrypoint:
   - /bin/sh
   - -c
@@ -82,7 +82,7 @@ containers:
     - -sf
     - http://localhost:8001/health
     timeout: 10s
-  image: us-docker.pkg.dev/aptos-registry/ccs-images-public/minimax-watermark@sha256:7b8454effe86fa13c8f80f4481c2fdaca0ce7fe321f8327a37858afe1448fbb7
+  image: us-docker.pkg.dev/aptos-registry/ccs-images-public/confidential-qwen-minimax-video-controls@sha256:7a83408219c13ee9139364b6fc460324b5ed7e85b7db6ebc8bf83c8ef1826e93
   ipc: private
   name: vllm-omni-minimax
   networks:
@@ -108,7 +108,7 @@ containers:
     - -c
     - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health/liveliness', timeout=3).close()
     timeout: 10s
-  image: us-docker.pkg.dev/aptos-registry/ccs-images-public/confidential-qwen-minimax-moderation-worker@sha256:a60441af96de9cecf5ec7866513f319c33c7f263b82a925587dda8e1b2ebbf0b
+  image: us-docker.pkg.dev/aptos-registry/ccs-images-public/confidential-qwen-minimax-moderation-worker@sha256:445df99707167e10828f993a027cf29dc3cf7d38a158da01fce00703665fc8a8
   ipc: private
   name: moderation-worker
   networks:
@@ -128,9 +128,9 @@ cvm-version: 0.11.0
 gpus: 8
 memory: 524288
 models:
-- mpk: 87721463756e43f0b64a59975b41e6798f43921cbfd4f69524be59ebb3a893a8_144051265536_a57648aa-2b9d-53d1-8572-5116af536194
+- mpk: d202414c2cfe1a5d04643061ef01566f50130a2e914d0cb8ecbc3a0683157b47_210331811840_1cee8566-240e-54b9-860d-01417a9ef424
   name: minimax-h3-fl2va
-  repo: model@1332deb833241c6daa758b04c0e1ad631de41b190c386b7576267b986328d625
+  repo: MiniMaxAI/MiniMax-H3@42ed227ee7df40d41602854ae760620d6eb651fe
 - mpk: 146b75f36614f6c597c09c5f7b62acd0a99c4f5d21c31a590fbd6ca68d053acc_70530605056_3ac824a9-5ee0-5130-9f87-1b94ff497b11
   name: qwen3-omni-30b-a3b-instruct
   repo: Qwen/Qwen3-Omni-30B-A3B-Instruct@26291f793822fb6be9555850f06dfe95f2d7e695

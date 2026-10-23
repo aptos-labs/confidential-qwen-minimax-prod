@@ -6,7 +6,7 @@ dual-model confidential-inference CVM on `host0.inference.aptoslabs.com`:
 | Model ID | Model | Container | GPUs |
 |---|---|---|---|
 | `qwen3-omni` | Qwen3-Omni-30B-A3B-Instruct (chat/omni and moderation) | `vllm-omni-qwen:8000` | 4–6 |
-| `minimax-h3-fl2va` | MiniMax-H3 FL2VA (synchronous video) | `vllm-omni-minimax:8001` | 0–3 |
+| `minimax-h3-fl2va` | MiniMax-H3 FL2VA + Ref2VA (synchronous video) | `vllm-omni-minimax:8001` | 0–3 |
 | Private worker | Qwen3Guard-Gen-0.6B | `moderation-worker:8090` | 7 |
 
 The repository name `aptos-labs/confidential-qwen-minimax-prod` was restored for this
@@ -18,12 +18,13 @@ release is a new tag. Do not reuse an archived tag.
 ## What is attested
 
 `tinfoil-config.yml` is the exact measured runtime the CVM host agent materializes for the
-fleet object. Release `v0.3.5` provides configurable MiniMax input/output moderation, the private
-Guard worker, and a 4/3/1 GPU allocation. Model images and packs, hardware shape, and public
-API routes are preserved. v0.3.4 passed live startup and authenticated video smoke checks;
-broader moderation quality and load performance remain unvalidated.
+fleet object. Release `v0.4.0` adds Ref2VA with 1–9 image references and silent MP4
+delivery. MiniMax shards its combined checkpoint over GPUs 0–3; Qwen remains on 4–6 and
+Guard on 7. The signed hardware shape, two model volumes, watermark, and configurable
+moderation stages are preserved. The deployment keeps input checks enabled and output
+checks disabled. Broader moderation quality and load performance remain unvalidated.
 The YAML uses the canonical order emitted after the fleet API's JSON round trip. Its SHA-256 is
-`686f7c1782f7c4bbe98d09c692f539ad0d4a5ab465a2aea5847f73c56a2de923`.
+`e5ca44a854e75c3a495329dd4186f05a346c80d790f03551e60970f1af41644e`.
 
 A gateway fronts both models and attempts CCS admission before calling a model
 server. When the admission route returns 404, the gateway uses the same usage-only
@@ -40,13 +41,13 @@ config, external config, and two model volumes).
 
 ## Sources
 
-- [Video controls](docs/video-controls.md) covers the Ref2VA and silent-output candidate,
+- [Video controls](docs/video-controls.md) covers Ref2VA and silent output,
   its combined checkpoint, exact-source model patch, and negative-guidance limitation.
 
 - [MiniMax moderation](docs/moderation.md) describes the implemented worker, mandatory
   gateway checks, 4/3/1 GPU runtime renderer, tests, and staging/release requirements.
   The immutable unmoderated baseline is in `runtime-baselines/v0.2.1.yml`; the current
-  `tinfoil-config.yml` contains the moderated release candidate.
+  `tinfoil-config.yml` contains the measured moderated runtime.
 
 - `images/paid-gateway/` contains the gateway, its baked LiteLLM config, entrypoint, and
   offline tests. Its model catalog, backend target, and multipart validation are
@@ -55,6 +56,38 @@ config, external config, and two model volumes).
   time. This release pins the verified GAR gateway and worker images below and the existing
   `ghcr.io/aptos-labs/confidential-qwen-minimax-qwen-metered` digest. A rebuilt image
   requires its own verification and a new runtime release.
+
+## Reference images and silent output in v0.4.0
+
+Select `extra_params.task=ref2va` and upload 1–9 ordered `input_references` multipart parts.
+Set `generate_sound=false` for an MP4 with no audio track. H3 still computes joint audio/video
+latents. Native `negative_prompt` guidance is unsupported; prompt rewriting is not enabled.
+Usage and character-reference syntax are in [video controls](docs/video-controls.md).
+
+Gateway and worker source: `c249ac4ccf77f9a5a82b7d689c0bbb6cdee3b296` ([#14](https://github.com/aptos-labs/confidential-qwen-minimax-prod/pull/14)).
+H3 controls source: `5eb615b961cf4a502cf194a89143032f612c7a79` ([#15](https://github.com/aptos-labs/confidential-qwen-minimax-prod/pull/15)),
+including the compatibility fix that preserves audio when `generate_sound` is omitted.
+
+| Image | Cloud Build | Digest |
+|---|---|---|
+| `confidential-qwen-minimax-paid-gateway` | [22ca1f52-c07a-4811-9f3c-7d46150eb744](https://console.cloud.google.com/cloud-build/builds/22ca1f52-c07a-4811-9f3c-7d46150eb744?project=aptos-cloudbuild) | `sha256:3e78cd2ead62bfbdfd4be3aef82a806484f084b75e9266102485c01764cedffb` |
+| `confidential-qwen-minimax-moderation-worker` | [249bbc11-a4ef-4502-b5e7-5bf1532f0c2c](https://console.cloud.google.com/cloud-build/builds/249bbc11-a4ef-4502-b5e7-5bf1532f0c2c?project=aptos-cloudbuild) | `sha256:445df99707167e10828f993a027cf29dc3cf7d38a158da01fce00703665fc8a8` |
+| `confidential-qwen-minimax-video-controls` | [36ce6d69-4219-40dc-9190-738ed26454dc](https://console.cloud.google.com/cloud-build/builds/36ce6d69-4219-40dc-9190-738ed26454dc?project=aptos-cloudbuild) | `sha256:7a83408219c13ee9139364b6fc460324b5ed7e85b7db6ebc8bf83c8ef1826e93` |
+
+Docker tests, isolated final-image smoke and anonymous published-digest pulls passed.
+Independent verification checked Google-signed provenance, OCI revision/platform labels,
+and output digests. Source archive SHA-256:
+gateway/worker `328f0b634b7d2c175028bf333eae5cfe82ce70304e9c11e7b8e58df95240f3f0`;
+H3 controls `0bcad4df08568fb756210e2e1745f9dbe427edf2a83fe2a4b2e9dbcc0aa55f5b`.
+The model image preserves the existing `NOT FOR COMMERCIAL USE` watermark.
+
+The [combined model pack](https://storage.googleapis.com/aptos-cvm-images/models/minimax-h3-combined-94337995ea91d9db466c878eb0533c54f7345b38e4db884fef91287d6d6e721e.mpk) was built with Modelwrap v0.3.0 from
+`MiniMaxAI/MiniMax-H3@42ed227ee7df40d41602854ae760620d6eb651fe`. Every input matched its pinned Hugging Face Git/LFS hash;
+offline dm-verity verification and anonymous object/checksum verification passed.
+Pack BLAKE3: `94337995ea91d9db466c878eb0533c54f7345b38e4db884fef91287d6d6e721e`. Measured model reference:
+`d202414c2cfe1a5d04643061ef01566f50130a2e914d0cb8ecbc3a0683157b47_210331811840_1cee8566-240e-54b9-860d-01417a9ef424`. Shared encoders/VAEs are retained once; only the Ref2VA DiT is added.
+Live GPU boot and rendering are separate deployment checks; CPU image checks do not establish
+character fidelity, memory headroom, or latency under load.
 
 ## Configurable moderation stages in v0.3.5
 

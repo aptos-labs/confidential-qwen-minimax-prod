@@ -1,9 +1,10 @@
 # MiniMax moderation
 
-Status: v0.3.4 passed live startup and authenticated text/first-frame/first-last-frame video
-checks. The v0.3.5 runtime candidate pins the published, provenance-verified configurable
-gateway and exposes its stage settings; deployment pre=`true`/post=`false` awaits live validation.
-The worker/model images and 4/3/1 allocation are retained from v0.3.4.
+Status: v0.3.5 passed live startup, authentication, policy-block and text/first-last-frame
+video checks with pre=`true`/post=`false`. The v0.4.0 measured runtime adds the shared
+nine-image Ref2VA parser and silent-output model image; these stage settings and the
+physical 4/3/1 GPU allocation are retained. See [video controls](video-controls.md) for
+the combined checkpoint and MiniMax tensor-parallel placement.
 The broader quality/load benchmark remains outstanding. The immutable unmoderated v0.2.1 baseline
 is retained in `runtime-baselines/v0.2.1.yml`; the renderer always starts from that baseline.
 
