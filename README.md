@@ -57,6 +57,14 @@ config, external config, and two model volumes).
   `ghcr.io/aptos-labs/confidential-qwen-minimax-qwen-metered` digest. A rebuilt image
   requires its own verification and a new runtime release.
 
+## Voice-sample implementation
+
+The gateway/worker source adds WAV/MP3 references for Ref2VA and the independent
+`CCS_MODERATION_AUDIO_ENABLED` setting (default `false`). Prompt/image moderation remains
+separate. These source changes require newly published gateway/worker images and a runtime
+release; the current measured v0.4.0 runtime remains unchanged. See [voice samples](docs/video-controls.md#voice-samples)
+for limits, the curl example, and upstream cropping behavior.
+
 ## Reference images and silent output in v0.4.0
 
 Select `extra_params.task=ref2va` and upload 1–9 ordered `input_references` multipart parts.

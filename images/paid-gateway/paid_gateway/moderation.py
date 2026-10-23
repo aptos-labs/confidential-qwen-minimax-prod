@@ -21,17 +21,18 @@ POST_TIMEOUT = 240
 class ModerationConfig:
     pre_enabled: bool = True
     post_enabled: bool = True
+    audio_enabled: bool = False
 
     @property
     def required(self) -> bool:
-        return self.pre_enabled or self.post_enabled
+        return self.pre_enabled or self.post_enabled or self.audio_enabled
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> ModerationConfig:
         values = os.environ if env is None else env
 
-        def enabled(name: str) -> bool:
-            value = values.get(name, "true")
+        def enabled(name: str, default: str = "true") -> bool:
+            value = values.get(name, default)
             if value not in {"true", "false"}:
                 raise ValueError(f"{name} must be true or false")
             return value == "true"
@@ -39,6 +40,7 @@ class ModerationConfig:
         return cls(
             pre_enabled=enabled("CCS_MODERATION_PRE_ENABLED"),
             post_enabled=enabled("CCS_MODERATION_POST_ENABLED"),
+            audio_enabled=enabled("CCS_MODERATION_AUDIO_ENABLED", "false"),
         )
 
 
@@ -110,7 +112,14 @@ class ModerationClient:
             return unavailable
 
     async def check(
-        self, stage: str, body: bytes, content_type: str, *, audio_expected: bool = True
+        self,
+        stage: str,
+        body: bytes,
+        content_type: str,
+        *,
+        audio_expected: bool = True,
+        inputs_enabled: bool = True,
+        audio_enabled: bool = False,
     ) -> None:
         if stage not in {"pre", "post"}:
             raise ValueError("invalid moderation stage")
@@ -124,9 +133,11 @@ class ModerationClient:
                         "Content-Type": content_type,
                         "Accept-Encoding": "identity",
                         "X-Audio-Expected": "true" if audio_expected else "false",
+                        "X-Moderation-Inputs": "true" if inputs_enabled else "false",
+                        "X-Moderation-Audio": "true" if audio_enabled else "false",
                     },
                 ) as response:
-                    if response.status_code != 200 or (
+                    if response.status_code not in {200, 400} or (
                         response.headers.get("content-type", "").split(";")[0]
                         != "application/json"
                         or response.headers.get("content-encoding", "identity") != "identity"
@@ -137,6 +148,13 @@ class ModerationClient:
                         data.extend(chunk)
                         if len(data) > 1024:
                             raise ModerationFailure
+                    if response.status_code == 400:
+                        if stage == "pre" and strict_object(bytes(data)) == {
+                            "decision": "block",
+                            "category": "invalid_request",
+                        }:
+                            raise GatewayError("invalid_request", 400)
+                        raise ModerationFailure
                     verdict = Verdict.parse(bytes(data))
         except (ModerationFailure, httpx.HTTPError, TimeoutError) as exc:
             raise GatewayError(FAILURE) from exc

@@ -25,12 +25,12 @@ jobs:
       - name: Test, lint and type-check
         run: |
           /tmp/moderation-tests/bin/python -m pytest -q
-          /tmp/moderation-tests/bin/ruff check images/moderation-worker images/paid-gateway/paid_gateway/app.py images/paid-gateway/paid_gateway/moderation* scripts/render_moderated_runtime.py scripts/evaluate_moderation.py scripts/smoke_moderation_image.py tests/test_moderated_runtime.py images/paid-gateway/tests/test_moderation_gateway.py
-          /tmp/moderation-tests/bin/ruff format --check images/moderation-worker images/paid-gateway/paid_gateway/app.py images/paid-gateway/paid_gateway/moderation* scripts/render_moderated_runtime.py scripts/evaluate_moderation.py scripts/smoke_moderation_image.py tests/test_moderated_runtime.py images/paid-gateway/tests/test_moderation_gateway.py
+          /tmp/moderation-tests/bin/ruff check images/moderation-worker images/paid-gateway/paid_gateway/app.py images/paid-gateway/paid_gateway/moderation* scripts/render_moderated_runtime.py scripts/evaluate_moderation.py scripts/smoke_moderation_image.py tests/test_moderated_runtime.py images/paid-gateway/tests/test_moderation_gateway.py images/paid-gateway/tests/test_voice_samples.py
+          /tmp/moderation-tests/bin/ruff format --check images/moderation-worker images/paid-gateway/paid_gateway/app.py images/paid-gateway/paid_gateway/moderation* scripts/render_moderated_runtime.py scripts/evaluate_moderation.py scripts/smoke_moderation_image.py tests/test_moderated_runtime.py images/paid-gateway/tests/test_moderation_gateway.py images/paid-gateway/tests/test_voice_samples.py
           /tmp/moderation-tests/bin/mypy images/paid-gateway/paid_gateway/app.py images/paid-gateway/paid_gateway/moderation_contract.py images/paid-gateway/paid_gateway/moderation.py images/moderation-worker/moderation_worker scripts/render_moderated_runtime.py scripts/evaluate_moderation.py
-          /tmp/moderation-tests/bin/ruff check images/minimax-controls images/paid-gateway/paid_gateway/video_request.py scripts/smoke_minimax_controls_image.py
-          /tmp/moderation-tests/bin/ruff format --check images/minimax-controls images/paid-gateway/paid_gateway/video_request.py scripts/smoke_minimax_controls_image.py
-          /tmp/moderation-tests/bin/mypy images/minimax-controls/install.py images/paid-gateway/paid_gateway/video_request.py scripts/smoke_minimax_controls_image.py
+          /tmp/moderation-tests/bin/ruff check images/minimax-controls images/paid-gateway/paid_gateway/video_request.py images/paid-gateway/paid_gateway/voice_sample.py scripts/smoke_minimax_controls_image.py
+          /tmp/moderation-tests/bin/ruff format --check images/minimax-controls images/paid-gateway/paid_gateway/video_request.py images/paid-gateway/paid_gateway/voice_sample.py scripts/smoke_minimax_controls_image.py
+          /tmp/moderation-tests/bin/mypy images/minimax-controls/install.py images/paid-gateway/paid_gateway/video_request.py images/paid-gateway/paid_gateway/voice_sample.py scripts/smoke_minimax_controls_image.py
   image:
     runs-on: ubuntu-latest
     timeout-minutes: 90

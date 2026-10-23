@@ -499,6 +499,7 @@ class PaidGateway:
                 "moderation": {
                     "pre_enabled": self.moderation_config.pre_enabled,
                     "post_enabled": self.moderation_config.post_enabled,
+                    "audio_enabled": self.moderation_config.audio_enabled,
                 },
             },
             status_code=200 if healthy else 503,
@@ -573,8 +574,18 @@ class PaidGateway:
                 video = parse_video(body, request.headers["content-type"])
                 maximum = await session.admit(model, video.modalities, ["video"])
                 async with asyncio.timeout_at(session.deadline):
-                    if self.moderation_config.pre_enabled:
-                        await self.moderation.check("pre", body, request.headers["content-type"])
+                    if (
+                        video.needs_audio_validation
+                        or self.moderation_config.pre_enabled
+                        or (video.audios and self.moderation_config.audio_enabled)
+                    ):
+                        await self.moderation.check(
+                            "pre",
+                            body,
+                            request.headers["content-type"],
+                            inputs_enabled=self.moderation_config.pre_enabled,
+                            audio_enabled=self.moderation_config.audio_enabled,
+                        )
                     async with self.upstream.stream(
                         "POST",
                         self.targets[model],

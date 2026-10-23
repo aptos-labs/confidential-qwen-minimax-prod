@@ -42,7 +42,7 @@ quality or load performance. Reported output false positives motivate the config
 
 ## Request flow and decisions
 
-The gateway supports independently configured input and output moderation:
+The gateway supports independently configured prompt/image, input-audio and output moderation:
 admission → enabled pre-check → generation → MP4 buffer → enabled post-check → output
 checkpoint/settlement → response. The admission-404 billing fallback preserves the configured
 checks. Enabled checks fail closed on errors/timeouts and return policy blocks as before.
@@ -55,18 +55,21 @@ These are operator-owned, CVM-wide startup environment settings, not request par
 |---|---|---|
 | `CCS_MODERATION_PRE_ENABLED` | `true` | Check the prompt, negative prompt, and uploaded images |
 | `CCS_MODERATION_POST_ENABLED` | `true` | Decode and classify generated frames and audio |
+| `CCS_MODERATION_AUDIO_ENABLED` | `false` | Classify uploaded voice samples independently of the prompt/image setting |
 
-Only literal lowercase `true` and `false` are accepted. Missing values retain both checks;
+Only literal lowercase `true` and `false` are accepted. Missing values retain prompt/image and output checks while leaving voice-sample classification off;
 empty or malformed values abort startup before clients are created. The requested production
-configuration is pre=`true`, post=`false`. Configuration is captured once at startup, so
+configuration is pre=`true`, post=`false`, audio=`false`. Configuration is captured once at startup, so
 changing a value requires a gateway restart. Request headers/form fields cannot override it.
 
-The fleet runtime must expose these two names in the gateway container's `env` list; set
+The fleet runtime must expose these names in the gateway container's `env` list; set
 their values in the protected fleet `spec.external.env` map. These external values are
 operator-controlled and are not part of the measured runtime hash. Changing exposed values
 does not require an image rebuild. The gateway `/health` response reports the effective
-`moderation: {pre_enabled, post_enabled}` flags. If either stage is enabled, worker readiness
-still gates aggregate health. With both disabled, health does not call or require the worker.
+`moderation: {pre_enabled, post_enabled, audio_enabled}` flags. If any stage is enabled, worker readiness
+still gates aggregate health. With all three disabled, health does not call or require the worker for content checks.
+MP3 requests still require the worker for CPU format/duration validation before generation;
+this validation does not require Guard/Omni readiness or invoke classifiers.
 The worker's own Guard/Omni startup self-tests and private pre/post routes remain available.
 
 Disabling the post-check skips output content classification and the worker's full media
@@ -81,8 +84,10 @@ rejected by the backend; use `fl2va` for single-image requests.
 The Ref2VA candidate adds `extra_params.task=ref2va` with 1–9 PNG/JPEG uploads in the
 ordered `input_references` field (singular `input_reference` remains valid for one image).
 FL2VA retains its two-image limit. The aggregate multipart limit remains 64 MiB and every
-reference receives the existing full image validation and Omni pre-check. No reference
-video/audio files, URLs, or per-request moderation overrides are added. Enabling this task
+reference receives the existing full image validation and Omni pre-check. The voice-sample extension additionally accepts up to three bounded WAV/MP3 uploads in the same
+field, validated independently of content classification. No reference videos, URLs, or
+per-request moderation overrides are accepted. See [voice samples](video-controls.md#voice-samples)
+for formats, duration limits and speaker association. Enabling this task
 requires the combined checkpoint and runtime described in [Video controls](video-controls.md).
 
 The pre-check runs Qwen3Guard-Gen-0.6B on the complete prompt using its native chat template.
@@ -106,7 +111,8 @@ moderation returns HTTP 200, including a policy block. Worker errors return HTTP
 `{"decision":"block","category":"moderation_unavailable"}`. The gateway converts policy
 blocks into HTTP 400 `content_policy_violation` with a category and request ID; operational
 errors into HTTP 503 `moderation_unavailable`. Neither path emits video headers or bytes.
-Errors must never count as abuse strikes. CCS block persistence/tenant enforcement remains
+Invalid input media returns HTTP 400 with `invalid_request` and no policy allegation.
+Decoder/transport errors remain operational failures. Errors must never count as abuse strikes. CCS block persistence/tenant enforcement remains
 separate W4 work. Blocked outputs are not checkpointed as successful video deliveries;
 commercial charging policy is still unresolved.
 
@@ -182,7 +188,7 @@ uses liveness, so unavailable moderation does not prevent the shim from serving 
 or health diagnostics. Enabled MiniMax pre/post checks still fail closed until moderation is ready.
 Readiness requires Guard's safe-text self-test and Qwen text/image/audio self-tests. Qwen
 startup is retried; unavailable dependencies never bypass an enabled moderation check.
-When either check is enabled, aggregate `/health` includes worker readiness and returns 503 if it is unavailable;
+When any check is enabled, aggregate `/health` includes worker readiness and returns 503 if it is unavailable;
 the gateway's boot liveness remains independent of model/worker readiness.
 The private `/health/startup` endpoint and gateway aggregate health expose only an
 allowlisted startup stage and a failure boolean. Stages distinguish CUDA discovery,

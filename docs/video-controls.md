@@ -1,4 +1,4 @@
-# MiniMax reference images and silent output
+# MiniMax reference images, voice samples and silent output
 
 The v0.4.0 measured runtime contains Ref2VA and silent-output controls, with verified
 image/model provenance recorded in the README. Native negative guidance is unsupported
@@ -26,6 +26,65 @@ Reference images guide appearance; they do not bind the shot's first/last frame.
 between a character and images is prompt-based, with no structured character-ID field.
 Three composite character cards count as three images. Twelve separate views exceed the
 nine-image limit. Character fidelity requires evaluation on representative inputs.
+
+## Voice samples
+
+Voice-sample support is implemented in the gateway/worker source; publishing the updated
+images and a measured runtime is required to enable it on the public endpoint.
+The existing H3 image and combined checkpoint already support reference audio. No model
+repack or GPU-placement change is required.
+
+For `task=ref2va`, add WAV or MP3 uploads to the same repeated `input_references` field:
+
+```bash
+curl --fail-with-body --max-time 1800 \
+  https://host0.inference.aptoslabs.com/v1/videos/sync \
+  -H "Authorization: Bearer $CCS_API_KEY" \
+  -F 'model=minimax-h3-fl2va' \
+  --form-string 'prompt=<Subject 1> is the character in <Picture 1>. <Audio 1> is the voice-timbre reference for <Subject 1> (S1). <Subject 1> (S1) smiles and says <d>[English] Welcome back. It is good to see you.</d>' \
+  -F 'input_references=@character.png;type=image/png' \
+  -F 'input_references=@voice.wav;type=audio/wav' \
+  -F 'width=1344' -F 'height=768' -F 'aspect_ratio=16:9' -F 'fps=24' \
+  -F 'num_inference_steps=50' -F 'flow_shift=12' -F 'seed=1101' \
+  -F 'generate_sound=true' \
+  -F 'extra_params={"task":"ref2va","duration":5.0,"audio_flow_shift":3.0}' \
+  -o voice-reference.mp4
+```
+
+WAV samples must use a `.wav` filename and MIME type `audio/wav`, uncompressed signed
+16-bit PCM, one or two channels, and a sample rate between 16 and 48 kHz. MP3 samples use a
+`.mp3` filename and MIME type `audio/mpeg`, for example:
+
+```bash
+-F 'input_references=@voice.mp3;type=audio/mpeg'
+```
+
+The gateway checks WAV RIFF/chunk integrity and every PCM frame. MP3 uploads always receive
+a full, bounded FFmpeg decode in the private worker before generation, even when all content
+classifiers are disabled. This CPU validation needs no model readiness. Invalid recordings
+return `400 invalid_request`; decoder unavailability/timeouts return `503 moderation_unavailable`.
+The decoded duration, including all WAV and MP3 samples in the request, must satisfy these limits:
+2–15 seconds per sample, at most three samples, 15 seconds of audio in total, and 3 MiB per
+sample. Up to nine images plus three audio files fit the existing 64 MiB request limit.
+At least one image is required. Audio uploads are rejected for T2VA and FL2VA.
+URLs, base64 fields, video uploads and ElevenLabs voice IDs are not accepted. To convert
+an exported recording, use `ffmpeg -i voice.mp3 -ac 1 -ar 24000 -c:a pcm_s16le voice.wav`;
+select a 2–15 second excerpt when necessary.
+
+`<Picture N>` and `<Audio N>` are numbered independently in their respective upload order.
+Bind each audio label to a subject and speaker ID in the prompt to associate multiple voices.
+The original multipart bytes reach H3 unchanged. The deployed upstream pipeline crops each
+reference audio to the output video duration before encoding: a five-second render uses only
+the first five seconds of a longer sample. Voice similarity, exact dialogue timing and lip-sync
+quality require evaluation; this interface does not guarantee an identical voice or lossless
+reuse of a supplied dialogue recording.
+
+Input-audio content moderation is independent of prompt/image and output moderation.
+`CCS_MODERATION_AUDIO_ENABLED=false` is the default for trusted samples. Setting it to
+`true` classifies every voice sample with the existing internal Qwen Omni, normalizing it to
+24 kHz stereo PCM in request-private scratch. Enabled checks fail closed. The setting is
+operator-owned and cannot be overridden by request fields or headers. Use the renderer's
+`--voice-samples` flag to expose it in the gateway environment. See [moderation configuration](moderation.md#stage-configuration).
 
 ## Silent delivery
 

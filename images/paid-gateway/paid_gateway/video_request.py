@@ -6,10 +6,12 @@ import math
 from dataclasses import dataclass
 from email import policy
 from email.parser import BytesHeaderParser
+from fractions import Fraction
 from typing import Any, NoReturn
 
 from .client import GatewayError, strict_json
 from .protocol import VIDEO
+from .voice_sample import validate_mp3, voice_duration
 
 
 def invalid() -> NoReturn:
@@ -35,10 +37,15 @@ class VideoRequest:
     negative_prompt: str
     images: tuple[tuple[str, bytes], ...]
     audio_expected: bool
+    audios: tuple[tuple[str, bytes], ...] = ()
+
+    @property
+    def needs_audio_validation(self) -> bool:
+        return any(mime == "audio/mpeg" for mime, _ in self.audios)
 
     @property
     def modalities(self) -> list[str]:
-        return ["text", "image"] if self.images else ["text"]
+        return ["text"] + (["image"] if self.images else []) + (["audio"] if self.audios else [])
 
 
 def parse_video(body: bytes, content_type: str) -> VideoRequest:
@@ -64,6 +71,8 @@ def parse_video(body: bytes, content_type: str) -> VideoRequest:
         fields: dict[str, str] = {}
         files: list[str] = []
         images: list[tuple[str, bytes]] = []
+        audios: list[tuple[str, bytes]] = []
+        audio_duration = Fraction(0)
         for index, section in enumerate(sections[:-1]):
             if index:
                 if not section.startswith(b"\r\n"):
@@ -93,7 +102,7 @@ def parse_video(body: bytes, content_type: str) -> VideoRequest:
             if filename is not None:
                 if (
                     name not in {"input_reference", "input_references"}
-                    or len(files) >= 9
+                    or len(files) >= 12
                     or not data
                 ):
                     invalid()
@@ -104,6 +113,26 @@ def parse_video(body: bytes, content_type: str) -> VideoRequest:
                 ):
                     invalid()
                 media_type = part.get_content_type()
+                if media_type in {"audio/wav", "audio/mpeg"}:
+                    if (
+                        name != "input_references"
+                        or not filename.lower().endswith(
+                            ".wav" if media_type == "audio/wav" else ".mp3"
+                        )
+                        or len(audios) >= 3
+                    ):
+                        invalid()
+                    if media_type == "audio/wav":
+                        audio_duration += voice_duration(data)
+                    else:
+                        validate_mp3(data)
+                    if audio_duration > 15:
+                        invalid()
+                    files.append(name)
+                    audios.append((media_type, data))
+                    continue
+                if len(images) >= 9:
+                    invalid()
                 if media_type == "image/png":
                     if not data.startswith(b"\x89PNG\r\n\x1a\n"):
                         invalid()
@@ -218,7 +247,7 @@ def parse_video(body: bytes, content_type: str) -> VideoRequest:
         if task == "ref2va":
             if not images:
                 invalid()
-        elif len(images) > 2:
+        elif audios or len(images) > 2:
             invalid()
     except (UnicodeError, TypeError, ValueError, IndexError) as exc:
         raise GatewayError("invalid_request", 400) from exc
@@ -227,6 +256,7 @@ def parse_video(body: bytes, content_type: str) -> VideoRequest:
         fields.get("negative_prompt", ""),
         tuple(images),
         fields.get("generate_sound", "true").lower() not in {"false", "0"},
+        tuple(audios),
     )
 
 
