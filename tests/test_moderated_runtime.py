@@ -76,10 +76,14 @@ def test_renderer_refuses_unexpected_baseline():
 def test_release_runtime_matches_reviewed_renderer():
     released = yaml.safe_load((ROOT / "tinfoil-config.yml").read_text())
     containers = {c["name"]: c for c in released["containers"]}
+    minimax = next(m for m in released["models"] if m["name"] == "minimax-h3-fl2va")
     assert released == render.render(
         yaml.safe_load(render.BASELINE.read_text()),
         containers["litellm"]["image"],
         containers["moderation-worker"]["image"],
+        minimax_image=containers["vllm-omni-minimax"]["image"],
+        minimax_pack=minimax["mpk"],
+        minimax_repo=minimax["repo"],
     )
 
 

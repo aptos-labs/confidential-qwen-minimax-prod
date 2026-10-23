@@ -1,8 +1,8 @@
 # MiniMax reference images and silent output
 
-Status: implementation candidate; the deployed v0.3.5 runtime remains unchanged until the
-new images and combined model pack are published, verified and released. Native negative
-guidance is unsupported by the released H3 checkpoints. Prompt rewriting is not enabled.
+The v0.4.0 measured runtime contains Ref2VA and silent-output controls, with verified
+image/model provenance recorded in the README. Native negative guidance is unsupported
+by the released H3 checkpoints. Prompt rewriting is not enabled.
 
 ## Character references
 
