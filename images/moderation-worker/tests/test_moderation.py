@@ -15,12 +15,14 @@ from paid_gateway.moderation_contract import ALLOW, UNAVAILABLE, ModerationFailu
 from PIL import Image
 
 
-def form(prompt="A red square", negative="", count=0):
+def form(prompt="A red square", negative="", count=0, task=None):
     fields = {
         "model": "minimax-h3-fl2va",
         "prompt": prompt,
         "negative_prompt": negative,
-        "extra_params": json.dumps({"task": "fl2va" if count else "t2va", "duration": 4}),
+        "extra_params": json.dumps(
+            {"task": task or ("fl2va" if count else "t2va"), "duration": 4}
+        ),
     }
     result = b""
     for name, value in fields.items():
@@ -188,18 +190,36 @@ class FakeOmni:
         pass
 
 
-@pytest.mark.parametrize("count", [0, 1, 2])
+@pytest.mark.parametrize("count", [0, 1, 2, 9])
 def test_prechecks_every_upload_and_preserves_negative_prompt_role(count):
     async def case():
         guard, omni = FakeGuard(), FakeOmni()
         result = await Worker(guard, omni).pre(
-            form(negative="no nudity", count=count), "multipart/form-data; boundary=test"
+            form(negative="no nudity", count=count, task="ref2va" if count == 9 else None),
+            "multipart/form-data; boundary=test",
         )
         assert result == ALLOW
         assert guard.prompts == ["A red square"]
         assert len(omni.calls) == count + 1
         assert json.loads(omni.calls[0][0]["text"])["negative_prompt"] == "no nudity"
         assert all(c[1]["type"] == "image_url" for c in omni.calls[1:])
+
+    asyncio.run(case())
+
+
+def test_ninth_character_reference_can_block_generation():
+    class LastImageBlocked(FakeOmni):
+        async def classify(self, content):
+            await super().classify(content)
+            return Verdict("block", "sexual_content") if len(self.calls) == 10 else ALLOW
+
+    async def case():
+        omni = LastImageBlocked()
+        result = await Worker(FakeGuard(), omni).pre(
+            form(count=9, task="ref2va"), "multipart/form-data; boundary=test"
+        )
+        assert result == Verdict("block", "sexual_content")
+        assert len(omni.calls) == 10
 
     asyncio.run(case())
 

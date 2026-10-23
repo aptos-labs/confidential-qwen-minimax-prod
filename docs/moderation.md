@@ -77,6 +77,13 @@ MiniMax uses `task=fl2va` with one `input_reference` for a starting image, or tw
 `input_references` for first/last images. `task=i2va` is currently accepted by the gateway but
 rejected by the backend; use `fl2va` for single-image requests.
 
+The Ref2VA candidate adds `extra_params.task=ref2va` with 1–9 PNG/JPEG uploads in the
+ordered `input_references` field (singular `input_reference` remains valid for one image).
+FL2VA retains its two-image limit. The aggregate multipart limit remains 64 MiB and every
+reference receives the existing full image validation and Omni pre-check. No reference
+video/audio files, URLs, or per-request moderation overrides are added. Enabling this task
+requires the combined checkpoint and runtime described in [Video controls](video-controls.md).
+
 The pre-check runs Qwen3Guard-Gen-0.6B on the complete prompt using its native chat template.
 Every Unsafe or Controversial severity blocks. Sexual labels block regardless of severity.
 Only valid Safe/None may continue. A secondary Qwen3-Omni policy classification checks the

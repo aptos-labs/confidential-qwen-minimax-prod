@@ -6,13 +6,13 @@ import math
 from dataclasses import dataclass
 from email import policy
 from email.parser import BytesHeaderParser
-from typing import Any
+from typing import Any, NoReturn
 
 from .client import GatewayError, strict_json
 from .protocol import VIDEO
 
 
-def invalid() -> None:
+def invalid() -> NoReturn:
     raise GatewayError("invalid_request", 400)
 
 
@@ -93,7 +93,7 @@ def parse_video(body: bytes, content_type: str) -> VideoRequest:
             if filename is not None:
                 if (
                     name not in {"input_reference", "input_references"}
-                    or len(files) >= 2
+                    or len(files) >= 9
                     or not data
                 ):
                     invalid()
@@ -197,6 +197,7 @@ def parse_video(body: bytes, content_type: str) -> VideoRequest:
             "0",
         }:
             invalid()
+        task = ""
         if "extra_params" in fields:
             extra = strict_json(fields["extra_params"])
             if not isinstance(extra, dict) or set(extra) - {
@@ -206,13 +207,19 @@ def parse_video(body: bytes, content_type: str) -> VideoRequest:
                 "audio_flow_shift",
             }:
                 invalid()
-            if "task" in extra and extra["task"] not in {"t2va", "fl2va", "i2va"}:
+            if "task" in extra and extra["task"] not in {"t2va", "fl2va", "i2va", "ref2va"}:
                 invalid()
+            task = extra.get("task", "")
             for key in ("duration", "duration_seconds"):
                 if key in extra:
                     number(extra[key], 4, 15)
             if "audio_flow_shift" in extra:
                 number(extra["audio_flow_shift"], 0, 32)
+        if task == "ref2va":
+            if not images:
+                invalid()
+        elif len(images) > 2:
+            invalid()
     except (UnicodeError, TypeError, ValueError, IndexError) as exc:
         raise GatewayError("invalid_request", 400) from exc
     return VideoRequest(

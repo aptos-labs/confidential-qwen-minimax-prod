@@ -40,6 +40,9 @@ config, external config, and two model volumes).
 
 ## Sources
 
+- [Video controls](docs/video-controls.md) covers the Ref2VA and silent-output candidate,
+  its combined checkpoint, exact-source model patch, and negative-guidance limitation.
+
 - [MiniMax moderation](docs/moderation.md) describes the implemented worker, mandatory
   gateway checks, 4/3/1 GPU runtime renderer, tests, and staging/release requirements.
   The immutable unmoderated baseline is in `runtime-baselines/v0.2.1.yml`; the current

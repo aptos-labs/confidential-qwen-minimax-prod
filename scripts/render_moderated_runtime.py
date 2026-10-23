@@ -16,7 +16,15 @@ BASELINE = ROOT / "runtime-baselines/v0.2.1.yml"
 REGISTRY = "us-docker.pkg.dev/aptos-registry/ccs-images-public/"
 
 
-def render(base: dict[str, Any], gateway: str, worker: str) -> dict[str, Any]:
+def render(
+    base: dict[str, Any],
+    gateway: str,
+    worker: str,
+    *,
+    minimax_image: str | None = None,
+    minimax_pack: str | None = None,
+    minimax_repo: str | None = None,
+) -> dict[str, Any]:
     for image, name in (
         (gateway, "confidential-qwen-minimax-paid-gateway"),
         (worker, "confidential-qwen-minimax-moderation-worker"),
@@ -51,6 +59,35 @@ def render(base: dict[str, Any], gateway: str, worker: str) -> dict[str, Any]:
     # Drop stdout/stderr at the process boundary; health/aggregate metrics still work.
     qwen["command"] = [command.rstrip() + " >/dev/null 2>&1"]
     minimax = containers["vllm-omni-minimax"]
+    if any(value is not None for value in (minimax_image, minimax_pack, minimax_repo)):
+        if not all((minimax_image, minimax_pack, minimax_repo)):
+            raise ValueError("combined H3 requires an image, model pack and source revision")
+        assert minimax_image is not None and minimax_pack is not None and minimax_repo is not None
+        if not re.fullmatch(
+            re.escape(REGISTRY + "confidential-qwen-minimax-video-controls")
+            + r"@sha256:[0-9a-f]{64}",
+            minimax_image,
+        ):
+            raise ValueError("exact public GAR MiniMax controls digest required")
+        if not re.fullmatch(r"[0-9a-f]{64}_[1-9][0-9]*_[0-9a-f-]{36}", minimax_pack):
+            raise ValueError("verified combined model pack required")
+        if not re.fullmatch(r"MiniMaxAI/MiniMax-H3@[0-9a-f]{40}", minimax_repo):
+            raise ValueError("pinned MiniMax source revision required")
+        model = next(m for m in runtime["models"] if m["name"] == "minimax-h3-fl2va")
+        old_path = "/tinfoil/mpk/mpk-" + model["mpk"].split("_")[0] + "/FL2VA"
+        new_path = "/tinfoil/mpk/mpk-" + minimax_pack.split("_")[0]
+        command = minimax["command"][0]
+        if command.count(old_path) != 1 or command.count("--usp=4") != 1:
+            raise ValueError("unexpected MiniMax launch command")
+        # Ulysses replicates both DiTs on each GPU. Shard their weights and the
+        # shared text encoder across the same four H200s for the combined model.
+        minimax["command"] = [
+            command.replace(old_path, new_path, 1).replace(
+                "--usp=4", "--tensor-parallel-size=4 --text-encoder-tp-size=4 --usp=1", 1
+            )
+        ]
+        minimax["image"] = minimax_image
+        model.update(mpk=minimax_pack, repo=minimax_repo)
     minimax["command"] = [minimax["command"][0].rstrip() + " >/dev/null 2>&1"]
     runtime["containers"].append(
         {
@@ -93,9 +130,19 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--gateway", required=True)
     parser.add_argument("--worker", required=True)
+    parser.add_argument("--minimax-image")
+    parser.add_argument("--minimax-pack")
+    parser.add_argument("--minimax-repo")
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
-    value = render(yaml.safe_load(BASELINE.read_text()), args.gateway, args.worker)
+    value = render(
+        yaml.safe_load(BASELINE.read_text()),
+        args.gateway,
+        args.worker,
+        minimax_image=args.minimax_image,
+        minimax_pack=args.minimax_pack,
+        minimax_repo=args.minimax_repo,
+    )
     with args.output.open("x") as output:
         yaml.safe_dump(value, output, sort_keys=True)
 

@@ -468,6 +468,35 @@ def test_video_validates_uploads_without_rewriting_body():
 
 
 # Regression coverage exercises the real ASGI boundary, not only meter helpers.
+@pytest.mark.parametrize(
+    "task,count,allowed",
+    [
+        ("ref2va", 0, False),
+        ("ref2va", 1, True),
+        ("ref2va", 9, True),
+        ("ref2va", 10, False),
+        ("fl2va", 2, True),
+        ("fl2va", 3, False),
+        ("t2va", 3, False),
+        (None, 3, False),
+    ],
+)
+def test_reference_limits_are_task_specific(task, count, allowed):
+    from paid_gateway.video_request import parse_video
+
+    fields = [("model", "minimax-h3-fl2va"), ("prompt", "character references")]
+    if task is not None:
+        fields.append(("extra_params", json.dumps({"task": task})))
+    images = [b"\x89PNG\r\n\x1a\n" + bytes([i]) for i in range(count)]
+    raw = form(fields, [("input_references", image) for image in images])
+    if allowed:
+        request = parse_video(raw, "multipart/form-data; boundary=fixture-boundary")
+        assert [image for _, image in request.images] == images
+    else:
+        with pytest.raises(GatewayError, match="invalid_request"):
+            parse_video(raw, "multipart/form-data; boundary=fixture-boundary")
+
+
 def sse(records, *, done=True):
     data = b"".join(b"data: " + json.dumps(record).encode() + b"\n\n" for record in records)
     return httpx.Response(
@@ -1017,6 +1046,8 @@ def test_review_unlabelled_mixed_output_fails_closed():
         ("t2va", 0, ["text"]),
         ("i2va", 1, ["text", "image"]),
         ("fl2va", 2, ["text", "image"]),
+        ("ref2va", 1, ["text", "image"]),
+        ("ref2va", 9, ["text", "image"]),
     ],
 )
 def test_review_video_admission_describes_actual_inputs(task, count, expected):
@@ -1203,7 +1234,7 @@ def test_billing_client_server_error_remains_fail_closed():
     asyncio.run(case())
 
 
-@pytest.mark.parametrize("task", ["t2va", "fl2va"])
+@pytest.mark.parametrize("task", ["t2va", "fl2va", "ref2va"])
 def test_usage_only_video_skips_billing_and_preserves_video_response(monkeypatch, task):
     async def case():
         fields = [
@@ -1223,7 +1254,7 @@ def test_usage_only_video_skips_billing_and_preserves_video_response(monkeypatch
             [
                 ("input_references", b"\x89PNG\r\n\x1a\nfirst"),
                 ("input_references", b"\x89PNG\r\n\x1a\nlast"),
-            ] if task == "fl2va" else [],
+            ] if task in {"fl2va", "ref2va"} else [],
         )
         billing = FakeBilling("absent")
         sent = []
