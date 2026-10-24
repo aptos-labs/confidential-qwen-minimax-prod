@@ -1,4 +1,4 @@
-# Build only reviewed source; preserve the existing watermark model image.
+# Build only reviewed source on the pinned watermark base image.
 substitutions:
   _SOURCE_SHA: ''
   _IMAGE: us-docker.pkg.dev/aptos-registry/ccs-images-public/confidential-qwen-minimax-video-controls

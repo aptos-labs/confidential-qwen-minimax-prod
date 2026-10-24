@@ -85,6 +85,8 @@ def test_release_runtime_matches_reviewed_renderer():
         minimax_pack=minimax["mpk"],
         minimax_repo=minimax["repo"],
         voice_samples="CCS_MODERATION_AUDIO_ENABLED" in containers["litellm"]["env"],
+        watermark_control="CCS_MINIMAX_WATERMARK_ENABLED"
+        in containers["vllm-omni-minimax"].get("env", []),
     )
 
 
@@ -124,3 +126,26 @@ def test_voice_samples_expose_independent_audio_control_without_gpu_or_model_cha
     gateway = next(c for c in candidate["containers"] if c["name"] == "litellm")
     assert gateway["env"].pop() == "CCS_MODERATION_AUDIO_ENABLED"
     assert candidate == existing
+
+
+def test_watermark_control_only_exposes_operator_setting_to_minimax():
+    base = yaml.safe_load(render.BASELINE.read_text())
+    kwargs = {
+        "minimax_image": render.REGISTRY
+        + "confidential-qwen-minimax-video-controls@sha256:"
+        + "c" * 64,
+        "minimax_pack": "d" * 64 + "_4096_12345678-1234-1234-1234-123456789012",
+        "minimax_repo": "MiniMaxAI/MiniMax-H3@" + "e" * 40,
+    }
+    existing = render.render(base, GATEWAY, WORKER, **kwargs)
+    candidate = render.render(base, GATEWAY, WORKER, **kwargs, watermark_control=True)
+    minimax = next(c for c in candidate["containers"] if c["name"] == "vllm-omni-minimax")
+    assert minimax["env"].pop() == "CCS_MINIMAX_WATERMARK_ENABLED"
+    assert candidate == existing
+
+
+def test_watermark_control_requires_controls_image():
+    with pytest.raises(ValueError, match="watermark control requires"):
+        render.render(
+            yaml.safe_load(render.BASELINE.read_text()), GATEWAY, WORKER, watermark_control=True
+        )

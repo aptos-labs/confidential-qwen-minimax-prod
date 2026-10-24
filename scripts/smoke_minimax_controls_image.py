@@ -12,7 +12,8 @@ IMAGE = (
     "us-docker.pkg.dev/aptos-registry/ccs-images-public/confidential-qwen-minimax-video-controls"
 )
 CHECK = r"""
-import hashlib, importlib.metadata, json, pathlib, sys
+import hashlib, importlib.metadata, json, os, pathlib, sys
+import numpy as np
 root = pathlib.Path(str(importlib.metadata.distribution('vllm-omni').locate_file('vllm_omni'))).resolve()
 artifact = pathlib.Path('/opt/minimax-controls')
 expected = pathlib.Path('/expected')
@@ -23,11 +24,28 @@ for name in ('vllm', 'vllm-omni'):
     assert importlib.metadata.version(name) == '0.28.0'
 sys.path.insert(0, str(artifact))
 from install import prepare
-path, patched = prepare(root)
 manifest = json.loads((artifact / 'manifest.json').read_text())
-assert path.read_bytes() == patched
-assert hashlib.sha256(patched).hexdigest() == manifest['patched_sha256']
-print('PASS: silent-output patch installed; original watermark preserved; no GPUs required.')
+for path, patched in prepare(root):
+    assert path.read_bytes() == patched
+    assert hashlib.sha256(patched).hexdigest() == manifest['patches'][str(path.relative_to(root))]['patched_sha256']
+source = (root / 'diffusion/utils/commercial_use.py').read_bytes()
+pixels = np.full((192, 320, 3), 96, dtype=np.uint8)
+for setting in (None, 'true', 'false'):
+    os.environ.pop('CCS_MINIMAX_WATERMARK_ENABLED', None)
+    if setting is not None:
+        os.environ['CCS_MINIMAX_WATERMARK_ENABLED'] = setting
+    namespace = {}
+    exec(source, namespace)
+    result = namespace['apply_commercial_use_watermark'](pixels)
+    assert np.array_equal(result, pixels) == (setting == 'false')
+os.environ['CCS_MINIMAX_WATERMARK_ENABLED'] = 'invalid'
+try:
+    exec(source, {})
+except ValueError:
+    pass
+else:
+    raise AssertionError('invalid watermark setting accepted')
+print('PASS: silent output and operator watermark on/off verified; no GPUs required.')
 """
 
 

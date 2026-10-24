@@ -97,11 +97,27 @@ before the shared sync/async MP4 assembly path. Video frames, sampling and seed 
 H3 still computes its joint audio/video latents; this setting does not avoid that GPU work.
 
 The model image derives from the exact deployed `minimax-watermark` digest. Installation
-checks the source hashes and preserves both watermark implementation files. CPU tests execute
+checks source hashes before applying the silent-output and watermark-control patches. CPU tests execute
 the patched serving method with synthetic generation, then encode and decode actual MP4s to
-verify stream presence/absence and watermark retention. Final-image checks run with no GPU,
+verify stream presence/absence and both watermark settings. Final-image checks run with no GPU,
 no network, a read-only root filesystem and no Linux capabilities. Live GPU rendering is a
 separate release check.
+
+## Visible watermark
+
+The model container accepts the operator-owned startup setting
+`CCS_MINIMAX_WATERMARK_ENABLED`. Omitted or literal lowercase `true` retains the original
+`NOT FOR COMMERCIAL USE` overlay. Literal lowercase `false` skips the overlay before
+encoding, preserving generated pixels and audio behavior. Other values fail at module startup.
+The setting is captured once when the media module loads and applies to every encoding path;
+it is not a request parameter. It does not remove a watermark from an existing video.
+
+Use the runtime renderer's `--watermark-control` flag to expose the setting only to the
+MiniMax container, then set its value in the protected fleet `spec.external.env` map.
+The first rollout requires a rebuilt controls image and signed runtime. Once exposed,
+changing the value requires a model-container restart. Model weights, GPU placement,
+generation seed, and moderation configuration are unaffected. Release v0.5.0 predates this
+control and always applies the overlay.
 
 ## Negative prompts
 
