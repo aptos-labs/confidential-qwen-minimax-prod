@@ -18,13 +18,14 @@ release is a new tag. Do not reuse an archived tag.
 ## What is attested
 
 `tinfoil-config.yml` is the exact measured runtime the CVM host agent materializes for the
-fleet object. Release `v0.5.0` adds WAV/MP3 voice references and independent input-audio
-moderation to the existing Ref2VA image references and silent MP4 delivery. MiniMax shards its combined checkpoint over GPUs 0–3; Qwen remains on 4–6 and
-Guard on 7. The signed hardware shape, two model volumes, watermark, and configurable
-moderation stages are preserved. The deployment keeps prompt/image checks enabled, with voice-sample content
+fleet object. Release `v0.5.1` adds operator control of the visible MiniMax watermark.
+The requested deployment sets `CCS_MINIMAX_WATERMARK_ENABLED=false`; omitted/true retains
+its original overlay. MiniMax shards its combined checkpoint over GPUs 0–3; Qwen remains on
+4–6 and Guard on 7. The signed hardware shape, two model volumes, voice references,
+silent delivery and configurable moderation stages are preserved. The deployment keeps prompt/image checks enabled, with voice-sample content
 classification and output checks disabled. Format and duration validation remain enforced. Broader moderation quality and load performance remain unvalidated.
 The YAML uses the canonical order emitted after the fleet API's JSON round trip. Its SHA-256 is
-`9e04882b4752b2121f0370f49ea2bfc9b4de8594e189a280377e0fc61d171da3`.
+`c93a9af17d13c8efc375ab975230cc18ad85ef3494ee20ee1f1e3ea2381f2651`.
 
 A gateway fronts both models and attempts CCS admission before calling a model
 server. When the admission route returns 404, the gateway uses the same usage-only
@@ -56,6 +57,27 @@ config, external config, and two model volumes).
   time. This release pins the verified GAR gateway and worker images below and the existing
   `ghcr.io/aptos-labs/confidential-qwen-minimax-qwen-metered` digest. A rebuilt image
   requires its own verification and a new runtime release.
+
+## Visible watermark control in v0.5.1
+
+The measured runtime replaces only the MiniMax controls image and exposes the
+operator-owned `CCS_MINIMAX_WATERMARK_ENABLED` startup setting to that container. The
+requested external value is `false`, which skips the visible overlay before encoding.
+Omitted/`true` retains the original notice; invalid values fail at module startup.
+See [watermark configuration](docs/video-controls.md#visible-watermark).
+
+Gateway, worker and Qwen image pins, model packs, GPU placement and moderation settings
+are unchanged. The merged Guard 16K source change is still pending a worker rollout;
+this release retains the worker's 8,192-token input limit.
+
+Model-image source: `6fab1fcac778138e124226966d5d9ba986545668`, reviewed in
+[#20](https://github.com/aptos-labs/confidential-qwen-minimax-prod/pull/20).
+Cloud Build [9427b6c6-8665-4268-94a1-600b28427758](https://console.cloud.google.com/cloud-build/builds/9427b6c6-8665-4268-94a1-600b28427758?project=aptos-cloudbuild)
+published `us-docker.pkg.dev/aptos-registry/ccs-images-public/confidential-qwen-minimax-video-controls@sha256:4bced0f5a20464024bae7a54db46a03a855e37c2d91042d03f3aedba4cb04246`. Source archive SHA-256: `83167fee7bb6decd6f2f7b9d77261d9d5438f026562778f2ddbd1061c136e40c`.
+Source hashes, signed build provenance and anonymous GAR access were independently verified.
+Local validation passed 696 tests plus 47 subtests, 43 exact-source image tests, Ruff and
+strict mypy. The final-image CPU checks cover watermark default/on/off and invalid values;
+live boot and unwatermarked video remain rollout checks.
 
 ## Voice samples in v0.5.0
 

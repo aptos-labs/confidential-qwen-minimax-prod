@@ -73,6 +73,7 @@ containers:
   env:
   - VLLM_WORKER_MULTIPROC_METHOD
   - VLLM_OMNI_VIDEO_SYNC_TIMEOUT
+  - CCS_MINIMAX_WATERMARK_ENABLED
   gpus: all
   healthcheck:
     interval: 30s
@@ -83,7 +84,7 @@ containers:
     - -sf
     - http://localhost:8001/health
     timeout: 10s
-  image: us-docker.pkg.dev/aptos-registry/ccs-images-public/confidential-qwen-minimax-video-controls@sha256:7a83408219c13ee9139364b6fc460324b5ed7e85b7db6ebc8bf83c8ef1826e93
+  image: us-docker.pkg.dev/aptos-registry/ccs-images-public/confidential-qwen-minimax-video-controls@sha256:4bced0f5a20464024bae7a54db46a03a855e37c2d91042d03f3aedba4cb04246
   ipc: private
   name: vllm-omni-minimax
   networks:

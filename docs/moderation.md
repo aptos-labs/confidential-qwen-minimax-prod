@@ -99,7 +99,7 @@ prompt and role-labeled negative prompt, followed by every uploaded image. No se
 check can override a Guard block. Text is capped at 16 KiB per field and Guard at 16,384 input
 tokens, including its chat template; no input is silently truncated. The pinned Guard model has
 a 32,768-token context, leaving room for the 128-token verdict budget. The expanded Guard cap
-requires a rebuilt worker image and rollout; v0.5.0 still enforces 8,192 tokens.
+requires a rebuilt worker image and rollout; v0.5.0 and v0.5.1 still enforce 8,192 tokens.
 Images must fully decode as static PNG/JPEG and fit
 the pixel/byte limits. The gateway and worker share the same multipart parser.
 
