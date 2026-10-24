@@ -17,6 +17,11 @@ def pytest_addoption(parser):
     parser.addoption("--upstream", help="vllm_omni directory in the pinned watermark image")
 
 
+@pytest.fixture(autouse=True)
+def isolate_watermark_setting(monkeypatch):
+    monkeypatch.delenv("CCS_MINIMAX_WATERMARK_ENABLED", raising=False)
+
+
 @pytest.fixture
 def package(tmp_path, pytestconfig):
     source = pytestconfig.getoption("--upstream")
@@ -24,7 +29,7 @@ def package(tmp_path, pytestconfig):
         pytest.skip("exact-image tests require --upstream; always supplied in the Docker build")
     manifest = json.loads((ARTIFACT / "manifest.json").read_text())
     root = tmp_path / "vllm_omni"
-    for name in (installer.TARGET, *manifest["preserved_files"]):
+    for name in (*manifest["patches"], *manifest["preserved_files"]):
         target = root / name
         target.parent.mkdir(parents=True, exist_ok=True)
         shutil.copyfile(Path(source) / name, target)

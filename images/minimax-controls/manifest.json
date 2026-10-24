@@ -1,15 +1,35 @@
 {
-  "format": 1,
+  "format": 2,
   "upstream_commit": "eb11446b7f2e30ca582f8aff3afe12e9a2e66f6c",
   "base_image": "us-docker.pkg.dev/aptos-registry/ccs-images-public/minimax-watermark@sha256:7b8454effe86fa13c8f80f4481c2fdaca0ce7fe321f8327a37858afe1448fbb7",
-  "target": "entrypoints/openai/serving_video.py",
-  "original_sha256": "e4a60e930773a4af69c4dd6fa1366bfd42d877f38c44ba6e90d414e42cc5473d",
-  "patched_sha256": "5c7885d6c37cbcdc0f2e9a36dbbb89cc26b9abf8da7a3a4a9d7a3bd781a1e268",
-  "old": "        audios = self._extract_audio_outputs(result, expected_count=len(videos))\n",
-  "new": "        # H3 generates joint video/audio even when audio is not requested.\n        # Suppress muxing here so both sync and async outputs are truly silent.\n        audios = (\n            [None] * len(videos)\n            if \"generate_sound\" in provided_fields and request.generate_sound is False\n            else self._extract_audio_outputs(result, expected_count=len(videos))\n        )\n",
+  "patches": {
+    "entrypoints/openai/serving_video.py": {
+      "original_sha256": "e4a60e930773a4af69c4dd6fa1366bfd42d877f38c44ba6e90d414e42cc5473d",
+      "patched_sha256": "5c7885d6c37cbcdc0f2e9a36dbbb89cc26b9abf8da7a3a4a9d7a3bd781a1e268",
+      "edits": [
+        {
+          "old": "        audios = self._extract_audio_outputs(result, expected_count=len(videos))\n",
+          "new": "        # H3 generates joint video/audio even when audio is not requested.\n        # Suppress muxing here so both sync and async outputs are truly silent.\n        audios = (\n            [None] * len(videos)\n            if \"generate_sound\" in provided_fields and request.generate_sound is False\n            else self._extract_audio_outputs(result, expected_count=len(videos))\n        )\n"
+        }
+      ]
+    },
+    "diffusion/utils/commercial_use.py": {
+      "original_sha256": "c97a97649bde99f03d4f8d599d8b5a4fff9c088561e81ecc8a5d233cc624829f",
+      "patched_sha256": "7b08ef3b57ff94aaf99bc6cf86d4b4bd267b0ed35c499c207589f14256f12464",
+      "edits": [
+        {
+          "old": "import numpy as np\n\nTEXT =",
+          "new": "# Modified by Aptos: operator-configurable visible watermark.\nimport os\n\nimport numpy as np\n\n_setting = os.environ.get(\"CCS_MINIMAX_WATERMARK_ENABLED\", \"true\")\nif _setting not in {\"true\", \"false\"}:\n    raise ValueError(\"CCS_MINIMAX_WATERMARK_ENABLED must be true or false\")\nWATERMARK_ENABLED = _setting == \"true\"\n\nTEXT ="
+        },
+        {
+          "old": "    stamped = np.array(frame, dtype=np.uint8, copy=True)\n",
+          "new": "    stamped = np.array(frame, dtype=np.uint8, copy=True)\n    if not WATERMARK_ENABLED:\n        return stamped\n"
+        }
+      ]
+    }
+  },
   "preserved_files": {
     "diffusion/utils/media_utils.py": "29bf765bc7d67ac6ddeb91414ce0869970d4f90ba28143c87ac070e0839af452",
-    "diffusion/utils/commercial_use.py": "c97a97649bde99f03d4f8d599d8b5a4fff9c088561e81ecc8a5d233cc624829f",
     "entrypoints/openai/protocol/videos.py": "1eb3762c145acb04f2964bfb0f05d44e470d91b31448693386c43ceefc7eae79"
   }
 }

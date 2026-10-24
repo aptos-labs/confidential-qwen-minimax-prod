@@ -25,6 +25,7 @@ def render(
     minimax_pack: str | None = None,
     minimax_repo: str | None = None,
     voice_samples: bool = False,
+    watermark_control: bool = False,
 ) -> dict[str, Any]:
     for image, name in (
         (gateway, "confidential-qwen-minimax-paid-gateway"),
@@ -91,6 +92,10 @@ def render(
         ]
         minimax["image"] = minimax_image
         model.update(mpk=minimax_pack, repo=minimax_repo)
+    if watermark_control:
+        if minimax_image is None:
+            raise ValueError("watermark control requires a verified MiniMax controls image")
+        minimax.setdefault("env", []).append("CCS_MINIMAX_WATERMARK_ENABLED")
     minimax["command"] = [minimax["command"][0].rstrip() + " >/dev/null 2>&1"]
     runtime["containers"].append(
         {
@@ -137,6 +142,7 @@ def main() -> None:
     parser.add_argument("--minimax-pack")
     parser.add_argument("--minimax-repo")
     parser.add_argument("--voice-samples", action="store_true")
+    parser.add_argument("--watermark-control", action="store_true")
     parser.add_argument("--output", required=True, type=Path)
     args = parser.parse_args()
     value = render(
@@ -147,6 +153,7 @@ def main() -> None:
         minimax_pack=args.minimax_pack,
         minimax_repo=args.minimax_repo,
         voice_samples=args.voice_samples,
+        watermark_control=args.watermark_control,
     )
     with args.output.open("x") as output:
         yaml.safe_dump(value, output, sort_keys=True)

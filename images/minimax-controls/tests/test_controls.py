@@ -13,14 +13,15 @@ import pytest
 from conftest import ARTIFACT, installer
 
 
-def test_install_preserves_watermark_and_is_idempotent(package):
+def test_install_preserves_unmodified_sources_and_is_idempotent(package):
     manifest = json.loads((ARTIFACT / "manifest.json").read_text())
     original = {name: (package / name).read_bytes() for name in manifest["preserved_files"]}
     installer.install(package)
-    patched = (package / installer.TARGET).read_bytes()
-    assert installer.sha256(patched) == manifest["patched_sha256"]
+    patched = {name: (package / name).read_bytes() for name in manifest["patches"]}
+    for name, data in patched.items():
+        assert installer.sha256(data) == manifest["patches"][name]["patched_sha256"]
     installer.install(package)
-    assert (package / installer.TARGET).read_bytes() == patched
+    assert all((package / name).read_bytes() == data for name, data in patched.items())
     assert all((package / name).read_bytes() == data for name, data in original.items())
 
 
@@ -35,10 +36,12 @@ def test_install_preserves_watermark_and_is_idempotent(package):
 )
 def test_source_drift_is_rejected_before_any_patch(package, name):
     (package / name).write_bytes((package / name).read_bytes() + b"\n# changed\n")
-    before = (package / installer.TARGET).read_bytes()
+    before = {
+        p: (package / p).read_bytes() for p in (installer.TARGET, installer.WATERMARK_TARGET)
+    }
     with pytest.raises(ValueError, match="source drift"):
         installer.install(package)
-    assert (package / installer.TARGET).read_bytes() == before
+    assert all((package / p).read_bytes() == data for p, data in before.items())
 
 
 def test_install_rejects_symlink_and_leaves_destination_unchanged(package, tmp_path):
@@ -94,7 +97,10 @@ def load_request_model(package):
     "sound,silent", [(False, True), (True, False), (None, False), ("false", True), ("0", True)]
 )
 @pytest.mark.parametrize("count", [1, 2])
-def test_real_server_control_flow_and_mux_preserve_watermark(installed, sound, silent, count):
+@pytest.mark.parametrize("setting", [None, "true", "false"])
+def test_real_server_control_flow_and_mux_obey_watermark(
+    installed, sound, silent, count, setting, monkeypatch
+):
     """Execute the patched serving method with synthetic generation, then real MP4 encoding."""
     frames = np.full((4, 192, 320, 3), 96, dtype=np.uint8)
     audio = np.zeros(32000, dtype=np.float32)
@@ -149,6 +155,8 @@ def test_real_server_control_flow_and_mux_preserve_watermark(installed, sound, s
         all(value is None for value in artifacts.audios) if silent else artifacts.audios is audios
     )
 
+    if setting is not None:
+        monkeypatch.setenv("CCS_MINIMAX_WATERMARK_ENABLED", setting)
     watermark = {"np": np}
     exec((installed / "diffusion/utils/commercial_use.py").read_bytes(), watermark)
     mux = load_definition(
@@ -170,6 +178,32 @@ def test_real_server_control_flow_and_mux_preserve_watermark(installed, sound, s
         decoded = [frame.to_ndarray(format="rgb24") for frame in container.decode(video=0)]
     assert len(decoded) == len(frames)
     expected = watermark["apply_commercial_use_watermark"](frames[0])
-    # H.264 is lossy, but the watermark must survive encoding and decoding.
+    # H.264 is lossy; compare decoded pixels against the requested output.
     assert np.abs(decoded[0].astype(float) - expected).mean() < 5
-    assert np.abs(decoded[0].astype(float) - frames[0]).sum() > 10000
+    if setting == "false":
+        assert np.array_equal(expected, frames[0])
+    else:
+        assert np.abs(decoded[0].astype(float) - frames[0]).sum() > 10000
+
+
+@pytest.mark.parametrize("setting", ["", "TRUE", "False", "0", "1", "off"])
+def test_invalid_watermark_setting_fails_at_module_startup(installed, setting, monkeypatch):
+    monkeypatch.setenv("CCS_MINIMAX_WATERMARK_ENABLED", setting)
+    with pytest.raises(ValueError, match="CCS_MINIMAX_WATERMARK_ENABLED"):
+        exec((installed / installer.WATERMARK_TARGET).read_bytes(), {})
+
+
+def test_watermark_setting_is_captured_at_startup_and_preserves_frame_timestamps(
+    installed, monkeypatch
+):
+    monkeypatch.setenv("CCS_MINIMAX_WATERMARK_ENABLED", "false")
+    namespace = {}
+    exec((installed / installer.WATERMARK_TARGET).read_bytes(), namespace)
+    monkeypatch.setenv("CCS_MINIMAX_WATERMARK_ENABLED", "true")
+    pixels = np.full((192, 320, 3), 96, dtype=np.uint8)
+    frame = av.VideoFrame.from_ndarray(pixels, format="rgb24")
+    frame.pts = 7
+    frame.time_base = Fraction(1, 24)
+    result = namespace["watermark_video_frame"](frame)
+    assert np.array_equal(result.to_ndarray(format="rgb24"), pixels)
+    assert result.pts == frame.pts and result.time_base == frame.time_base
