@@ -4,8 +4,9 @@
 
 Trial outcome: GPU boot and health checks succeeded, but both tested generation
 requests failed with an upstream error. No FastH3 performance result was obtained;
-see [trial evidence](docs/fasth3.md#v060-rc1-trial-result). Rollback to v0.5.1 was
-initiated after the failed requests.
+see [trial evidence](docs/fasth3.md#v060-rc1-trial-result). The exact v0.5.1 deployment
+was restored and verified with a successful first/last-frame FL2VA request and
+silent output. Host-agent and host-daemon identities remained unchanged.
 
 This branch publishes a temporary T2VA-only trial on the existing four H200s.
 Its `tinfoil-config.yml` replaces the MiniMax image, launch command and private

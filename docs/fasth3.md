@@ -1,8 +1,8 @@
 # FastH3 on four H200s: parity requirements
 
-Status: a temporary, versioned T2VA benchmark is being prepared. Production stays
-on v0.5.1 while the candidate builds. Restore that exact release after the trial;
-a permanent migration must preserve all currently working modes and controls.
+Status: v0.6.0-rc.1 booted but failed generation. The exact v0.5.1 deployment was
+restored and verified with a successful FL2VA request. A permanent migration must
+preserve all currently working modes and controls.
 
 ## v0.6.0-rc.1 trial result
 
@@ -22,8 +22,16 @@ The gateway suppresses upstream exception bodies, and this production runtime
 discards model stdout/stderr with guest SSH and console disabled. The underlying
 exception was therefore not captured. Do not infer an OOM, kernel, scheduling or
 adapter-fusion cause from the HTTP error. A subsequent trial needs diagnostics
-that expose the failure without retaining request content. The exact v0.5.1
-rollback was initiated after these two failures.
+that expose the failure without retaining request content.
+
+The exact v0.5.1 deployment was restored after these two failures. Its live spec
+and runtime hash matched the original snapshot. Trusted health passed for all
+backends with pre-moderation enabled and post/audio moderation disabled. A
+first/last-frame FL2VA request with silent delivery returned HTTP 200 and a valid
+1344×768, 24 FPS H.264 MP4 without audio (5.166667 seconds encoded for the requested
+five seconds), in 133.57 seconds end to end. Unauthenticated requests returned
+HTTP 401. Host-agent and host-daemon process/start identities and all other VM
+process IDs remained unchanged throughout the trial and rollback.
 
 The original v0.5.1 baseline request succeeded: 15.083333 seconds of 1344×768 video
 at 24 FPS with stereo AAC, 445.15 seconds measured inside MiniMax and 456.15 seconds
