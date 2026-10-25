@@ -24,7 +24,7 @@ steps:
         docker run --rm --network=none --read-only --cap-drop=ALL \
           --security-opt=no-new-privileges --tmpfs /tmp:rw,size=256m \
           --entrypoint python3 "$$IMAGE:source-$$SOURCE_SHA" -c \
-          'import importlib.metadata as m; import fastvideo_kernel; assert m.version("vllm") == m.version("vllm-omni") == "0.30.0"; assert m.version("fastvideo-kernel") == "0.3.4"; print("offline import check passed")'
+          'import importlib.metadata as m; from importlib.util import find_spec; import ccs_fasth3_controls; assert m.version("vllm") == m.version("vllm-omni") == "0.30.0"; assert m.version("fastvideo-kernel") == "0.3.4"; assert find_spec("fastvideo_kernel") is not None; print("offline controls import and package checks passed; GPU initialization requires the CVM")'
         docker push "$$IMAGE:source-$$SOURCE_SHA"
         image_ref="$$(docker image inspect --format '{{index .RepoDigests 0}}' "$$IMAGE:source-$$SOURCE_SHA")"
         case "$$image_ref" in "$$IMAGE"@sha256:*) ;; *) exit 1;; esac

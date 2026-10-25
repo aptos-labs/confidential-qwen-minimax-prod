@@ -46,7 +46,9 @@ video and audio tracks that do not exceed this cap.
 
 Build with `cloudbuild-fasth3.yaml`. Before publication, Cloud Build runs our
 exact-source serving/MP4 tests, upstream's CPU adapter-fusion tests, and an offline
-final-image import check. These checks do not prove GPU boot or performance.
+final-image controls import and package check. The kernel package initializes
+Triton at import time, so its GPU import belongs to CVM validation, not the
+CPU-only builder. These checks do not prove GPU boot or performance.
 `scripts/render_fasth3_trial.py` renders a candidate from an existing release
 without modifying the baseline. The intended trial version is `v0.6.0-rc.1`;
 never reuse a published version, and keep v0.5.1 and its exact environment as the
