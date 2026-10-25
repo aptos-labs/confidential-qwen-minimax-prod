@@ -1,8 +1,9 @@
 # FastH3 on four H200s: parity requirements
 
-Status: v0.6.0-rc.1 booted but failed generation. The exact v0.5.1 deployment was
-restored and verified with a successful FL2VA request. A permanent migration must
-preserve all currently working modes and controls.
+Status: the v0.6.0-rc.1 failure was reproduced and traced to a bundled CUDA driver
+in the native kernel wheel. The driver repair passes full T2VA generation on four
+H200s in an isolated debug CVM. A permanent migration must preserve all currently
+working modes and controls; this remains a temporary T2VA trial.
 
 ## v0.6.0-rc.1 trial result
 
@@ -61,8 +62,13 @@ and the installed ELF dependency without importing CUDA on the builder.
 Forcing `FASTVIDEO_VSA_TRITON=1` is a separately verified fallback: a full
 five-second T2VA request returned HTTP 200 in 43.10 seconds cold, with a fully
 decodable 1344×768/24 FPS H.264 video and stereo AAC (5.175 seconds encoded).
-Full H3 validation of the native driver repair is still pending. These results
-do not establish the 15-second video / 10-second latency target.
+The repaired native kernel also passed full H3 generation: the cold five-second
+request took 31.46 seconds, followed by two 15-second requests in 25.99 and 25.53
+seconds. The outputs decode completely as 1344×768 at 24 FPS, with stereo AAC;
+the longer clips are exactly 15.000 seconds. All four worker process maps show
+the repaired kernel and only the system 595.71.05 CUDA driver. These timings are
+HTTP requests inside the isolated backend, excluding public gateway/moderation
+and client-network overhead. The 10-second end-to-end target is not met.
 
 The exact v0.5.1 deployment was restored after these two failures. Its live spec
 and runtime hash matched the original snapshot. Trusted health passed for all
