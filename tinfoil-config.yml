@@ -66,7 +66,7 @@ containers:
     /root: size=20g,mode=0700,exec
     /tmp: size=20g,mode=1777,exec
 - command:
-  - CUDA_VISIBLE_DEVICES=0,1,2,3 exec vllm serve /tinfoil/mpk/mpk-d202414c2cfe1a5d04643061ef01566f50130a2e914d0cb8ecbc3a0683157b47 --trust-remote-code --host=0.0.0.0 --num-gpus=4 --tensor-parallel-size=4 --text-encoder-tp-size=4 --usp=1 --ring=1 --vae-patch-parallel-size=4 --vae-parallel-mode=tile --vae-use-tiling --port=8001 --omni --served-model-name minimax-h3-fl2va >/dev/null 2>&1
+  - CUDA_VISIBLE_DEVICES=0,1,2,3 exec python3 /opt/fasth3/serve.py --model /tinfoil/mpk/mpk-d202414c2cfe1a5d04643061ef01566f50130a2e914d0cb8ecbc3a0683157b47 >/dev/null 2>&1
   entrypoint:
   - /bin/sh
   - -c
@@ -84,7 +84,7 @@ containers:
     - -sf
     - http://localhost:8001/health
     timeout: 10s
-  image: us-docker.pkg.dev/aptos-registry/ccs-images-public/confidential-qwen-minimax-video-controls@sha256:4bced0f5a20464024bae7a54db46a03a855e37c2d91042d03f3aedba4cb04246
+  image: us-docker.pkg.dev/aptos-registry/ccs-images-public/confidential-qwen-minimax-fasth3@sha256:8a2ea5cb387411eadec038b3a8d3b9c4acbac3b4c7d0209f35c4108724288812
   ipc: private
   name: vllm-omni-minimax
   networks:
@@ -95,6 +95,7 @@ containers:
   tmpfs:
     /root: size=20g,mode=0700,exec
     /tmp: size=20g,mode=1777,exec
+    /var/cache/fasth3: rw,size=4g,mode=0700,exec,nosuid,nodev
 - command:
   - TRITON_CACHE_DIR=/var/cache/moderation/triton CUDA_VISIBLE_DEVICES=7 exec python3 -m moderation_worker
   entrypoint:

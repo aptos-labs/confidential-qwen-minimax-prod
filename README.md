@@ -1,5 +1,25 @@
 # Confidential Qwen3-Omni + MiniMax-H3 production runtime
 
+## Temporary FastH3 trial: v0.6.0-rc.1
+
+This branch publishes a temporary T2VA-only trial on the existing four H200s.
+Its `tinfoil-config.yml` replaces the MiniMax image, launch command and private
+compile cache. Qwen, Guard, the gateway and both model volumes are unchanged.
+Requests use `num_inference_steps=4` without flow-shift overrides. FL2VA, Ref2VA
+and voice-reference requests are unavailable during this trial.
+
+Restore the exact signed v0.5.1 deployment after benchmarking. Its configuration
+is preserved in `runtime-baselines/v0.5.1.yml`; the sections below describe that
+full-service baseline. Do not merge this trial configuration into main.
+
+Cloud Build `11cbe341-86e4-4ec4-b220-599d610cb7c4` published the public GAR image
+`confidential-qwen-minimax-fasth3@sha256:8a2ea5cb387411eadec038b3a8d3b9c4acbac3b4c7d0209f35c4108724288812`
+from source `0e3e633a0c760a3c5c2fd731ae153d809391f07f`. The image digest, anonymous
+access and Google-signed source provenance were independently verified.
+Eleven exact-source serving/media tests and 41 native FastH3 tests passed.
+GPU boot, quality and performance are separate trial checks. See
+[FastH3 trial details](docs/fasth3.md).
+
 This repository is the public, signed Tinfoil release provenance for the production
 dual-model confidential-inference CVM on `host0.inference.aptoslabs.com`:
 
