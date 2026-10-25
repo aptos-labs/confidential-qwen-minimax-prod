@@ -17,4 +17,4 @@ jobs:
           /tmp/fasth3-checks/bin/pytest -q tests/test_fasth3_trial.py
           /tmp/fasth3-checks/bin/ruff check images/minimax-fasth3 scripts/render_fasth3_trial.py tests/test_fasth3_trial.py
           /tmp/fasth3-checks/bin/ruff format --check images/minimax-fasth3 scripts/render_fasth3_trial.py tests/test_fasth3_trial.py
-          /tmp/fasth3-checks/bin/mypy images/minimax-fasth3/install.py images/minimax-fasth3/serve.py images/minimax-fasth3/ccs_fasth3_controls.py scripts/render_fasth3_trial.py
+          /tmp/fasth3-checks/bin/mypy images/minimax-fasth3/install.py images/minimax-fasth3/install_diagnostics.py images/minimax-fasth3/install_kernel.py images/minimax-fasth3/serve.py images/minimax-fasth3/ccs_fasth3_controls.py images/minimax-fasth3/ccs_fasth3_diagnostics.py scripts/render_fasth3_trial.py

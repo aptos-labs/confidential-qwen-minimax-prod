@@ -1,8 +1,88 @@
 # FastH3 on four H200s: parity requirements
 
-Status: a temporary, versioned T2VA benchmark is being prepared. Production stays
-on v0.5.1 while the candidate builds. Restore that exact release after the trial;
-a permanent migration must preserve all currently working modes and controls.
+Status: the v0.6.0-rc.1 failure was reproduced and traced to a bundled CUDA driver
+in the native kernel wheel. The driver repair passes full T2VA generation on four
+H200s in an isolated debug CVM. A permanent migration must preserve all currently
+working modes and controls; this remains a temporary T2VA trial.
+
+## v0.6.0-rc.1 trial result
+
+The signed candidate booted successfully on four H200s, including FastH3 model
+health, trusted TLS, Qwen and Guard. The image passed 11 serving/media tests and
+41 upstream fusion/schedule tests before publication. Its digest is
+`sha256:8a2ea5cb387411eadec038b3a8d3b9c4acbac3b4c7d0209f35c4108724288812`.
+
+Generation did not succeed. With the same cats prompt, seed 1101, 1344×768 and
+four inference steps, the five-second warm-up returned HTTP 502 `upstream_failed`
+after 25.47 seconds; the 15-second request returned the same error after 1.98
+seconds. Both incremented MiniMax's aborted-request counter. Backend health
+remained successful and no video was returned. These are failure latencies,
+not generation-performance results.
+
+The gateway suppresses upstream exception bodies, and this production runtime
+discards model stdout/stderr with guest SSH and console disabled. The underlying
+exception was therefore not captured. Do not infer an OOM, kernel, scheduling or
+adapter-fusion cause from the HTTP error. A subsequent trial needs diagnostics
+that expose the failure without retaining request content.
+
+The diagnostic candidate retains the same weights, kernel version and GPU
+configuration. It instruments exception handlers in six pinned upstream modules
+(API, runner, worker, executor, H3 pipeline and H3 VSA), including capture before
+worker cleanup erases tracebacks. Each process/boundary keeps only its most recent
+failure in private ephemeral storage. The existing metrics response gains
+`ccs_fasth3_failure_location`, with fixed exception/reason categories and at most
+12 build-time source-file IDs/line numbers. It never retains exception text,
+source snippets, locals, request IDs, prompts or media. Unknown/JIT source paths
+are omitted. Diagnostic I/O failure leaves the original exception unchanged.
+The snapshot is diagnostic evidence, not a request counter or readiness signal.
+
+The isolated debug CVM reproduced the failure using the exact rc.1 image:
+HTTP 500 after 26.09 seconds, with TMA descriptor initialization errors followed
+by a CUDA illegal-instruction fault. The original gateway mapped that failure
+to HTTP 502. A standalone 128-token SM90 attention test reproduced the same
+failure in `block_sparse_h100.cu:873`; no H3 weights or request parser were involved.
+
+The cp312 x86_64 fastvideo-kernel 0.3.4 wheel bundles
+`libcuda-dcdf334a.so.580.178.04`, and its native extension links that private driver
+instead of the system `libcuda.so.1` initialized by PyTorch. The debug CVM uses
+NVIDIA driver 595.71.05. Rebinding the native extension to the system driver makes
+the standalone native test pass with Triton forcing disabled. The fixed package
+removes the unused bundled driver and retains the native SM90 provider. This
+matters because the package automatically selects SM90 on H200 even though the
+vLLM wrapper describes that branch as a Triton route.
+
+`install_kernel.py` repairs only the known wheel binary (SHA-256
+`e1b703c871e37b273d0000d83de4bfd247f27618693f87ebad59dce689943cdb`). It changes one
+ELF string-table dependency to `libcuda.so.1`, preserves all offsets/instructions,
+and verifies the resulting SHA-256
+`09a8d89cd9eb455f8b87597c7102c7a5d925178def3caeeb1164be028a90a50f`.
+Source drift fails the build. CPU checks validate both the pinned binary change
+and the installed ELF dependency without importing CUDA on the builder.
+
+Forcing `FASTVIDEO_VSA_TRITON=1` is a separately verified fallback: a full
+five-second T2VA request returned HTTP 200 in 43.10 seconds cold, with a fully
+decodable 1344×768/24 FPS H.264 video and stereo AAC (5.175 seconds encoded).
+The repaired native kernel also passed full H3 generation: the cold five-second
+request took 31.46 seconds, followed by two 15-second requests in 25.99 and 25.53
+seconds. The outputs decode completely as 1344×768 at 24 FPS, with stereo AAC;
+the longer clips are exactly 15.000 seconds. All four worker process maps show
+the repaired kernel and only the system 595.71.05 CUDA driver. These timings are
+HTTP requests inside the isolated backend, excluding public gateway/moderation
+and client-network overhead. The 10-second end-to-end target is not met.
+
+The exact v0.5.1 deployment was restored after these two failures. Its live spec
+and runtime hash matched the original snapshot. Trusted health passed for all
+backends with pre-moderation enabled and post/audio moderation disabled. A
+first/last-frame FL2VA request with silent delivery returned HTTP 200 and a valid
+1344×768, 24 FPS H.264 MP4 without audio (5.166667 seconds encoded for the requested
+five seconds), in 133.57 seconds end to end. Unauthenticated requests returned
+HTTP 401. Host-agent and host-daemon process/start identities and all other VM
+process IDs remained unchanged throughout the trial and rollback.
+
+The original v0.5.1 baseline request succeeded: 15.083333 seconds of 1344×768 video
+at 24 FPS with stereo AAC, 445.15 seconds measured inside MiniMax and 456.15 seconds
+for the authenticated HTTP request including download. The 10-second target has
+not been established.
 
 ## Temporary vLLM-Omni trial
 

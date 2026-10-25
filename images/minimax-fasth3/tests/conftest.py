@@ -15,6 +15,9 @@ def load(name):
     return module
 
 
+diagnostic_installer = load("install_diagnostics")
+kernel_installer = load("install_kernel")
+diagnostics = load("ccs_fasth3_diagnostics")
 installer = load("install")
 launcher = load("serve")
 controls = load("ccs_fasth3_controls")
@@ -22,6 +25,7 @@ controls = load("ccs_fasth3_controls")
 
 def pytest_addoption(parser):
     parser.addoption("--upstream")
+    parser.addoption("--kernel-wheel")
 
 
 @pytest.fixture
