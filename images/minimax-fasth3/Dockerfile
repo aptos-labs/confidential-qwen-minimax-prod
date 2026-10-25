@@ -11,7 +11,7 @@ FROM upstream AS runtime-base
 # Public, immutable adapter; base H3 stays on the existing measured model volume.
 ADD --checksum=sha256:42dc502a2078f166c396a1fa75f29728d1844363652d345d5ef3e2b444ed6470 https://huggingface.co/FastVideo/FastVideo-FastH3-4-step-Preview-v1-LoRA/resolve/f509e629374cac104e7f62daecce6d1488a3041d/vsa-datafree/adapter_model.safetensors /opt/fasth3/adapter_model.safetensors
 ADD --checksum=sha256:59b99642b95ea21630e311198ddbfffbfe05aadba0c2f5d884cbdf4efcc90f44 https://huggingface.co/FastVideo/FastVideo-FastH3-4-step-Preview-v1-LoRA/resolve/f509e629374cac104e7f62daecce6d1488a3041d/LICENSE /opt/fasth3/LICENSE
-COPY --chmod=0444 install.py install_diagnostics.py serve.py ccs_fasth3_controls.py ccs_fasth3_diagnostics.py /opt/fasth3/
+COPY --chmod=0444 install.py install_diagnostics.py install_kernel.py serve.py ccs_fasth3_controls.py ccs_fasth3_diagnostics.py /opt/fasth3/
 RUN python3 /opt/fasth3/install.py && chmod 0444 /opt/fasth3/adapter_model.safetensors
 ENV HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 HF_HUB_DISABLE_TELEMETRY=1 \
     VLLM_NO_USAGE_STATS=1 DO_NOT_TRACK=1 PYTHONDONTWRITEBYTECODE=1 \

@@ -39,6 +39,7 @@ KINDS = frozenset(
 REASONS = {
     "cuda_oom": "CUDA out of memory",
     "illegal_memory_access": "illegal memory access",
+    "illegal_instruction": "illegal instruction",
     "device_assert": "device-side assert",
     "invalid_kernel_image": "no kernel image is available",
     "invalid_device_function": "invalid device function",

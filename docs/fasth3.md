@@ -35,11 +35,34 @@ source snippets, locals, request IDs, prompts or media. Unknown/JIT source paths
 are omitted. Diagnostic I/O failure leaves the original exception unchanged.
 The snapshot is diagnostic evidence, not a request counter or readiness signal.
 
-One unconfirmed lead is provider selection: fastvideo-kernel 0.3.4 automatically
-chooses native SM90 sparse attention on H200 when its extension is available,
-despite the vLLM wrapper describing that branch as a Triton route. The diagnostic
-candidate does not change that selection. A native-kernel fault, OOM, filesystem
-failure or other cause must be established from an actual generation failure.
+The isolated debug CVM reproduced the failure using the exact rc.1 image:
+HTTP 500 after 26.09 seconds, with TMA descriptor initialization errors followed
+by a CUDA illegal-instruction fault. The original gateway mapped that failure
+to HTTP 502. A standalone 128-token SM90 attention test reproduced the same
+failure in `block_sparse_h100.cu:873`; no H3 weights or request parser were involved.
+
+The cp312 x86_64 fastvideo-kernel 0.3.4 wheel bundles
+`libcuda-dcdf334a.so.580.178.04`, and its native extension links that private driver
+instead of the system `libcuda.so.1` initialized by PyTorch. The debug CVM uses
+NVIDIA driver 595.71.05. Rebinding the native extension to the system driver makes
+the standalone native test pass with Triton forcing disabled. The fixed package
+removes the unused bundled driver and retains the native SM90 provider. This
+matters because the package automatically selects SM90 on H200 even though the
+vLLM wrapper describes that branch as a Triton route.
+
+`install_kernel.py` repairs only the known wheel binary (SHA-256
+`e1b703c871e37b273d0000d83de4bfd247f27618693f87ebad59dce689943cdb`). It changes one
+ELF string-table dependency to `libcuda.so.1`, preserves all offsets/instructions,
+and verifies the resulting SHA-256
+`09a8d89cd9eb455f8b87597c7102c7a5d925178def3caeeb1164be028a90a50f`.
+Source drift fails the build. CPU checks validate both the pinned binary change
+and the installed ELF dependency without importing CUDA on the builder.
+
+Forcing `FASTVIDEO_VSA_TRITON=1` is a separately verified fallback: a full
+five-second T2VA request returned HTTP 200 in 43.10 seconds cold, with a fully
+decodable 1344×768/24 FPS H.264 video and stereo AAC (5.175 seconds encoded).
+Full H3 validation of the native driver repair is still pending. These results
+do not establish the 15-second video / 10-second latency target.
 
 The exact v0.5.1 deployment was restored after these two failures. Its live spec
 and runtime hash matched the original snapshot. Trusted health passed for all

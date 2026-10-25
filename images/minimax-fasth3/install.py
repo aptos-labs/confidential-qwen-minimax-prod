@@ -9,6 +9,7 @@ from importlib.metadata import distribution, version
 from pathlib import Path
 
 from install_diagnostics import install as install_diagnostics
+from install_kernel import install as install_kernel
 
 TARGET = "entrypoints/openai/serving_video.py"
 ORIGINAL_SHA256 = "62cf398d04380f05a03097eee8a1ebfbbb0d3a4654615445447209bcfd4735ac"
@@ -56,6 +57,7 @@ def main() -> None:
     for cache in (path.parent / "__pycache__").glob("serving_video.*.pyc"):
         cache.unlink()
     install_diagnostics(root)
+    install_kernel()
 
 
 if __name__ == "__main__":
