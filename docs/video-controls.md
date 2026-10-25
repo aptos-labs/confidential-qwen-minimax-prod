@@ -4,6 +4,9 @@ The v0.4.0 measured runtime contains Ref2VA and silent-output controls, with ver
 image/model provenance recorded in the README. Native negative guidance is unsupported
 by the released H3 checkpoints. Prompt rewriting is not enabled.
 
+The proposed [FastH3 migration](fasth3.md) must preserve these working modes and
+controls. A T2VA-only distilled checkpoint is not a replacement for this runtime.
+
 ## Character references
 
 The public model ID remains `minimax-h3-fl2va` for existing clients. Select reference mode

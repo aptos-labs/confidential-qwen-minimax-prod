@@ -1,0 +1,20 @@
+name: Validate FastH3 trial preparation
+on:
+  pull_request:
+permissions:
+  contents: read
+jobs:
+  source:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@8e8c483db84b4bee98b60c0593521ed34d9990e8
+        with:
+          persist-credentials: false
+      - name: Check trial launcher and runtime renderer
+        run: |
+          python3 -m venv /tmp/fasth3-checks
+          /tmp/fasth3-checks/bin/pip install pytest==9.1.1 PyYAML==6.0.3 ruff==0.17.1 mypy==2.4.0
+          /tmp/fasth3-checks/bin/pytest -q tests/test_fasth3_trial.py
+          /tmp/fasth3-checks/bin/ruff check images/minimax-fasth3 scripts/render_fasth3_trial.py tests/test_fasth3_trial.py
+          /tmp/fasth3-checks/bin/ruff format --check images/minimax-fasth3 scripts/render_fasth3_trial.py tests/test_fasth3_trial.py
+          /tmp/fasth3-checks/bin/mypy images/minimax-fasth3/install.py images/minimax-fasth3/serve.py images/minimax-fasth3/ccs_fasth3_controls.py scripts/render_fasth3_trial.py

@@ -76,6 +76,17 @@ def test_renderer_refuses_unexpected_baseline():
 def test_release_runtime_matches_reviewed_renderer():
     released = yaml.safe_load((ROOT / "tinfoil-config.yml").read_text())
     containers = {c["name"]: c for c in released["containers"]}
+    image = containers["vllm-omni-minimax"]["image"]
+    if image.startswith(render.REGISTRY + "confidential-qwen-minimax-fasth3@"):
+        trial_spec = importlib.util.spec_from_file_location(
+            "trial", ROOT / "scripts/render_fasth3_trial.py"
+        )
+        trial = importlib.util.module_from_spec(trial_spec)
+        trial_spec.loader.exec_module(trial)
+        baseline = yaml.safe_load((ROOT / "runtime-baselines/v0.5.1.yml").read_text())
+        assert released == trial.render(baseline, image)
+        released = baseline
+        containers = {c["name"]: c for c in released["containers"]}
     minimax = next(m for m in released["models"] if m["name"] == "minimax-h3-fl2va")
     assert released == render.render(
         yaml.safe_load(render.BASELINE.read_text()),
