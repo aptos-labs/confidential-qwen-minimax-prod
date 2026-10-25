@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import ast
 import hashlib
+import shutil
 from importlib.metadata import distribution, version
 from pathlib import Path
 
@@ -18,12 +19,22 @@ NEW = """        audios = (
 """
 
 
+FPS = "        output_fps = output_fps_base * self._resolve_video_fps_multiplier(result)\n"
+BOUNDED = (
+    FPS
+    + """        from ccs_fasth3_controls import bound_media
+        videos, audios = bound_media(videos, audios, fps=output_fps, sample_rate=audio_sample_rate)
+"""
+)
+
+
 def patched(source: bytes) -> bytes:
     if hashlib.sha256(source).hexdigest() != ORIGINAL_SHA256:
         raise ValueError("unexpected vLLM-Omni serving source")
-    if source.count(OLD.encode()) != 1:
+    if source.count(OLD.encode()) != 1 or source.count(FPS.encode()) != 1:
         raise ValueError("silent-output patch must match exactly once")
     result = source.replace(OLD.encode(), NEW.encode(), 1)
+    result = result.replace(FPS.encode(), BOUNDED.encode(), 1)
     ast.parse(result)
     return result
 
@@ -36,6 +47,10 @@ def main() -> None:
     if path.is_symlink():
         raise ValueError("serving source must be a regular file")
     path.write_bytes(patched(path.read_bytes()))
+    shutil.copyfile(
+        Path(__file__).with_name("ccs_fasth3_controls.py"),
+        root.parent / "ccs_fasth3_controls.py",
+    )
     for cache in (path.parent / "__pycache__").glob("serving_video.*.pyc"):
         cache.unlink()
 

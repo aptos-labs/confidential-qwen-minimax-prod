@@ -38,6 +38,12 @@ image preserves explicit silent delivery. Upstream does not add our old visible
 overlay; startup requires `CCS_MINIMAX_WATERMARK_ENABLED=false`. Watermark-on is
 not implemented in this trial. Runtime stdout/stderr suppression is retained.
 
+The trial caps decoded output at 360 frames and 15 seconds of audio before MP4
+encoding. Native H3 rounds 15-second requests to 362 frames; returning those
+unchanged would exceed the gateway's existing 15-second billing cap. Shorter
+clips are unaffected. Exact-source CPU encoding tests verify full 15-second
+video and audio tracks that do not exceed this cap.
+
 Build with `cloudbuild-fasth3.yaml`. Before publication, Cloud Build runs our
 exact-source serving/MP4 tests, upstream's CPU adapter-fusion tests, and an offline
 final-image import check. These checks do not prove GPU boot or performance.

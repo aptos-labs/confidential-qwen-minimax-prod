@@ -9,7 +9,7 @@ from unittest.mock import AsyncMock, Mock
 import av
 import numpy as np
 import pytest
-from conftest import installer, launcher
+from conftest import controls, installer, launcher
 
 
 def definition(source, name, namespace):
@@ -114,6 +114,41 @@ def test_real_serving_method_preserves_audio_default_and_silent_output(upstream,
 def test_patch_refuses_source_drift(upstream):
     with pytest.raises(ValueError, match="unexpected"):
         installer.patched((upstream / installer.TARGET).read_bytes() + b"\n")
+
+
+@pytest.mark.parametrize("layout", ["mono", "channels_first", "channels_last", "silent"])
+def test_full_fifteen_second_output_passes_existing_duration_limit(upstream, layout):
+    frames = np.full((362, 64, 64, 3), 96, dtype=np.uint8)
+    audio = np.zeros((2, 486400), dtype=np.float32)
+    if layout == "mono":
+        audio = audio[0]
+    elif layout == "channels_last":
+        audio = audio.T
+    elif layout == "silent":
+        audio = None
+    videos, audios = controls.bound_media([frames], [audio], fps=24, sample_rate=32000)
+    assert len(videos[0]) == 360
+    mux = definition(
+        (upstream / "diffusion/utils/media_utils.py").read_bytes(),
+        "mux_video_audio_bytes",
+        {
+            "io": io,
+            "av": av,
+            "np": np,
+            "cast": cast,
+            "Fraction": Fraction,
+        },
+    )
+    with av.open(io.BytesIO(mux(videos[0], audios[0], fps=24, audio_sample_rate=32000))) as c:
+        video = c.streams.video[0]
+        assert video.frames == 360
+        assert video.duration * video.time_base == 15
+        assert max(s.duration * s.time_base for s in c.streams) <= 15
+
+
+def test_preencoded_output_is_rejected_instead_of_slicing_mp4_bytes():
+    with pytest.raises(ValueError, match="decoded frames"):
+        controls.bound_media([b"mp4"], [None], fps=24, sample_rate=32000)
 
 
 def test_launch_uses_local_adapter_and_fixed_gpu_group():
