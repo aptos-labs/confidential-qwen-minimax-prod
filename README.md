@@ -2,6 +2,11 @@
 
 ## Temporary FastH3 trial: v0.6.0-rc.1
 
+Trial outcome: GPU boot and health checks succeeded, but both tested generation
+requests failed with an upstream error. No FastH3 performance result was obtained;
+see [trial evidence](docs/fasth3.md#v060-rc1-trial-result). Rollback to v0.5.1 was
+initiated after the failed requests.
+
 This branch publishes a temporary T2VA-only trial on the existing four H200s.
 Its `tinfoil-config.yml` replaces the MiniMax image, launch command and private
 compile cache. Qwen, Guard, the gateway and both model volumes are unchanged.

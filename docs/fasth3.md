@@ -4,6 +4,32 @@ Status: a temporary, versioned T2VA benchmark is being prepared. Production stay
 on v0.5.1 while the candidate builds. Restore that exact release after the trial;
 a permanent migration must preserve all currently working modes and controls.
 
+## v0.6.0-rc.1 trial result
+
+The signed candidate booted successfully on four H200s, including FastH3 model
+health, trusted TLS, Qwen and Guard. The image passed 11 serving/media tests and
+41 upstream fusion/schedule tests before publication. Its digest is
+`sha256:8a2ea5cb387411eadec038b3a8d3b9c4acbac3b4c7d0209f35c4108724288812`.
+
+Generation did not succeed. With the same cats prompt, seed 1101, 1344×768 and
+four inference steps, the five-second warm-up returned HTTP 502 `upstream_failed`
+after 25.47 seconds; the 15-second request returned the same error after 1.98
+seconds. Both incremented MiniMax's aborted-request counter. Backend health
+remained successful and no video was returned. These are failure latencies,
+not generation-performance results.
+
+The gateway suppresses upstream exception bodies, and this production runtime
+discards model stdout/stderr with guest SSH and console disabled. The underlying
+exception was therefore not captured. Do not infer an OOM, kernel, scheduling or
+adapter-fusion cause from the HTTP error. A subsequent trial needs diagnostics
+that expose the failure without retaining request content. The exact v0.5.1
+rollback was initiated after these two failures.
+
+The original v0.5.1 baseline request succeeded: 15.083333 seconds of 1344×768 video
+at 24 FPS with stereo AAC, 445.15 seconds measured inside MiniMax and 456.15 seconds
+for the authenticated HTTP request including download. The 10-second target has
+not been established.
+
 ## Temporary vLLM-Omni trial
 
 The candidate uses vLLM/vLLM-Omni v0.30.0, not the FastVideo server. This stable
