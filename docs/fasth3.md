@@ -24,6 +24,23 @@ exception was therefore not captured. Do not infer an OOM, kernel, scheduling or
 adapter-fusion cause from the HTTP error. A subsequent trial needs diagnostics
 that expose the failure without retaining request content.
 
+The diagnostic candidate retains the same weights, kernel version and GPU
+configuration. It instruments exception handlers in six pinned upstream modules
+(API, runner, worker, executor, H3 pipeline and H3 VSA), including capture before
+worker cleanup erases tracebacks. Each process/boundary keeps only its most recent
+failure in private ephemeral storage. The existing metrics response gains
+`ccs_fasth3_failure_location`, with fixed exception/reason categories and at most
+12 build-time source-file IDs/line numbers. It never retains exception text,
+source snippets, locals, request IDs, prompts or media. Unknown/JIT source paths
+are omitted. Diagnostic I/O failure leaves the original exception unchanged.
+The snapshot is diagnostic evidence, not a request counter or readiness signal.
+
+One unconfirmed lead is provider selection: fastvideo-kernel 0.3.4 automatically
+chooses native SM90 sparse attention on H200 when its extension is available,
+despite the vLLM wrapper describing that branch as a Triton route. The diagnostic
+candidate does not change that selection. A native-kernel fault, OOM, filesystem
+failure or other cause must be established from an actual generation failure.
+
 The exact v0.5.1 deployment was restored after these two failures. Its live spec
 and runtime hash matched the original snapshot. Trusted health passed for all
 backends with pre-moderation enabled and post/audio moderation disabled. A

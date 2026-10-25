@@ -15,6 +15,8 @@ def load(name):
     return module
 
 
+diagnostic_installer = load("install_diagnostics")
+diagnostics = load("ccs_fasth3_diagnostics")
 installer = load("install")
 launcher = load("serve")
 controls = load("ccs_fasth3_controls")
