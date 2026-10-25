@@ -1,0 +1,166 @@
+containers:
+- env:
+  - CCS_MODERATION_PRE_ENABLED
+  - CCS_MODERATION_POST_ENABLED
+  - CCS_MODERATION_AUDIO_ENABLED
+  healthcheck:
+    interval: 30s
+    start_period: 60m
+    test:
+    - CMD
+    - python3
+    - -c
+    - |
+      import urllib.error
+      import urllib.request
+      urllib.request.urlopen('http://127.0.0.1:8080/health/liveliness', timeout=3).close()
+      try:
+          urllib.request.urlopen('http://127.0.0.1:8080/v1/videos/sync', timeout=3).close()
+      except urllib.error.HTTPError as error:
+          assert error.code == 405 and error.headers.get('Allow') == 'POST'
+      else:
+          raise RuntimeError('Video method guard is missing')
+    timeout: 10s
+  image: us-docker.pkg.dev/aptos-registry/ccs-images-public/confidential-qwen-minimax-paid-gateway@sha256:b957cb568e0eda20efc9c8321f0dbe8ff0ada9b1cd19b60707152baf13c0d2b2
+  name: litellm
+  networks:
+  - models
+  - gateway-egress
+  restart: always
+  secrets:
+  - USAGE_REPORTER_SECRET
+  tmpfs:
+    /tmp: size=2g,mode=1777,exec
+- command:
+  - |-
+    CUDA_VISIBLE_DEVICES=4,5,6 exec vllm serve \
+    /tinfoil/mpk/mpk-146b75f36614f6c597c09c5f7b62acd0a99c4f5d21c31a590fbd6ca68d053acc \
+    --omni --trust-remote-code --host=0.0.0.0 --port=8000 \
+    --served-model-name qwen3-omni \
+    --init-timeout 1800 --stage-init-timeout 900 \
+    --stage-overrides '{"1": {"num_replicas": 1, "devices": "1"}, "2": {"num_replicas": 1, "devices": "2"}}' >/dev/null 2>&1
+  entrypoint:
+  - /bin/sh
+  - -c
+  env:
+  - VLLM_WORKER_MULTIPROC_METHOD
+  gpus: all
+  healthcheck:
+    interval: 30s
+    start_period: 60m
+    test:
+    - CMD
+    - curl
+    - -sf
+    - http://localhost:8000/health
+    timeout: 10s
+  image: ghcr.io/aptos-labs/confidential-qwen-minimax-qwen-metered@sha256:ae61f2365e44fc21604a9eb34438997db9f1f9ec8a6ea1f4589c906f7ba8311f
+  ipc: private
+  name: vllm-omni-qwen
+  networks:
+  - models
+  restart: always
+  runtime: nvidia
+  shm_size: 64g
+  tmpfs:
+    /root: size=20g,mode=0700,exec
+    /tmp: size=20g,mode=1777,exec
+- command:
+  - CUDA_VISIBLE_DEVICES=0,1,2,3 exec vllm serve /tinfoil/mpk/mpk-d202414c2cfe1a5d04643061ef01566f50130a2e914d0cb8ecbc3a0683157b47 --trust-remote-code --host=0.0.0.0 --num-gpus=4 --tensor-parallel-size=4 --text-encoder-tp-size=4 --usp=1 --ring=1 --vae-patch-parallel-size=4 --vae-parallel-mode=tile --vae-use-tiling --port=8001 --omni --served-model-name minimax-h3-fl2va >/dev/null 2>&1
+  entrypoint:
+  - /bin/sh
+  - -c
+  env:
+  - VLLM_WORKER_MULTIPROC_METHOD
+  - VLLM_OMNI_VIDEO_SYNC_TIMEOUT
+  - CCS_MINIMAX_WATERMARK_ENABLED
+  gpus: all
+  healthcheck:
+    interval: 30s
+    start_period: 60m
+    test:
+    - CMD
+    - curl
+    - -sf
+    - http://localhost:8001/health
+    timeout: 10s
+  image: us-docker.pkg.dev/aptos-registry/ccs-images-public/confidential-qwen-minimax-video-controls@sha256:4bced0f5a20464024bae7a54db46a03a855e37c2d91042d03f3aedba4cb04246
+  ipc: private
+  name: vllm-omni-minimax
+  networks:
+  - models
+  restart: always
+  runtime: nvidia
+  shm_size: 64g
+  tmpfs:
+    /root: size=20g,mode=0700,exec
+    /tmp: size=20g,mode=1777,exec
+- command:
+  - TRITON_CACHE_DIR=/var/cache/moderation/triton CUDA_VISIBLE_DEVICES=7 exec python3 -m moderation_worker
+  entrypoint:
+  - /bin/sh
+  - -c
+  gpus: all
+  healthcheck:
+    interval: 30s
+    start_period: 60m
+    test:
+    - CMD
+    - python3
+    - -c
+    - import urllib.request; urllib.request.urlopen('http://127.0.0.1:8090/health/liveliness', timeout=3).close()
+    timeout: 10s
+  image: us-docker.pkg.dev/aptos-registry/ccs-images-public/confidential-qwen-minimax-moderation-worker@sha256:856f4b56e57407f3edf56d764ebe5535741f5434674a7912adf5b3b847eb73bb
+  ipc: private
+  name: moderation-worker
+  networks:
+  - models
+  restart: always
+  runtime: nvidia
+  shm_size: 1g
+  tmpfs:
+    /root: size=64m,mode=0700,noexec
+    /tmp: size=2g,mode=1777,noexec
+    /var/cache/moderation: rw,size=256m,mode=0700,exec,nosuid,nodev
+cpus: 32
+cvm-network:
+  inbound-ports:
+  - 443
+cvm-version: 0.11.0
+gpus: 8
+memory: 524288
+models:
+- mpk: d202414c2cfe1a5d04643061ef01566f50130a2e914d0cb8ecbc3a0683157b47_210331811840_1cee8566-240e-54b9-860d-01417a9ef424
+  name: minimax-h3-fl2va
+  repo: MiniMaxAI/MiniMax-H3@42ed227ee7df40d41602854ae760620d6eb651fe
+- mpk: 146b75f36614f6c597c09c5f7b62acd0a99c4f5d21c31a590fbd6ca68d053acc_70530605056_3ac824a9-5ee0-5130-9f87-1b94ff497b11
+  name: qwen3-omni-30b-a3b-instruct
+  repo: Qwen/Qwen3-Omni-30B-A3B-Instruct@26291f793822fb6be9555850f06dfe95f2d7e695
+networks:
+  gateway-egress:
+    allow:
+    - api.inference.aptoslabs.com
+    egress: allowlist
+  models: {}
+shim:
+  atc: http://10.0.2.2:8399
+  authenticated: true
+  authenticated-endpoints:
+  - /v1/models
+  - /v1/chat/completions
+  - /v1/videos/sync
+  control-plane: https://api.inference.aptoslabs.com/
+  dummy-attestation: false
+  paths:
+  - /health/liveliness
+  - /health
+  - /metrics
+  - /v1/models
+  - /v1/chat/completions
+  - /v1/videos/sync
+  publish-attestation: false
+  tls-challenge: dns
+  tls-mode: cert-proxy
+  tls-own-san-domain: true
+  upstream-container: litellm
+  upstream-port: 8080

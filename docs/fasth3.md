@@ -51,6 +51,8 @@ final-image import check. These checks do not prove GPU boot or performance.
 without modifying the baseline. The intended trial version is `v0.6.0-rc.1`;
 never reuse a published version, and keep v0.5.1 and its exact environment as the
 rollback. No host-agent or host-daemon restart is part of this procedure.
+The exact signed v0.5.1 runtime is retained in `runtime-baselines/v0.5.1.yml`;
+tests pin its SHA-256 and verify trial releases against that baseline.
 
 The performance target is a completed 15-second 1344×768 video in approximately
 10 seconds, initially measured with text-only input. That initial benchmark scope

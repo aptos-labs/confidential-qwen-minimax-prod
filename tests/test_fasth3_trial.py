@@ -1,3 +1,4 @@
+import hashlib
 import importlib.util
 from pathlib import Path
 
@@ -8,10 +9,17 @@ ROOT = Path(__file__).resolve().parents[1]
 spec = importlib.util.spec_from_file_location("trial", ROOT / "scripts/render_fasth3_trial.py")
 trial = importlib.util.module_from_spec(spec)
 spec.loader.exec_module(trial)
+BASELINE = ROOT / "runtime-baselines/v0.5.1.yml"
+
+
+def test_rollback_matches_signed_v051_runtime():
+    assert hashlib.sha256(BASELINE.read_bytes()).hexdigest() == (
+        "c93a9af17d13c8efc375ab975230cc18ad85ef3494ee20ee1f1e3ea2381f2651"
+    )
 
 
 def test_trial_changes_only_minimax_image_command_and_private_cache():
-    base = yaml.safe_load((ROOT / "tinfoil-config.yml").read_text())
+    base = yaml.safe_load(BASELINE.read_text())
     candidate = trial.render(base, trial.IMAGE + "@sha256:" + "a" * 64)
     old = next(c for c in base["containers"] if c["name"] == "vllm-omni-minimax")
     new = next(c for c in candidate["containers"] if c["name"] == "vllm-omni-minimax")
